@@ -2,10 +2,10 @@ Name: AgentEarth-Stat.Cron
 Mode: dev
 
 Log:
-  ServiceName: cron               # 日志中显示的服务名
-  Mode: console                      # 日志输出方式：console / file / volume
+  ServiceName: agent-earth-stat               # 日志中显示的服务名
+  Mode: file                      # 日志输出方式：console / file / volume
   Encoding: json                  # 编码：plain 或 json
-  Path: logs                      # 日志目录（仅 file/volume 模式生效）
+  Path: /opt/xllogs/AgentEarthStat/                      # 日志目录（仅 file/volume 模式生效）
   Level: info                     # 日志级别：info / error / severe
   KeepDays: 7                     # 保留天数
   StackCooldownMillis: 100        # 相同堆栈日志冷却时间（ms）
@@ -14,7 +14,7 @@ Log:
 
 # 数据库配置（如果需要）
 DB:
-  DataSource: "postgres://wcs:123@121.89.95.89:9002/agent_earth?sslmode=disable"
+  DataSource: "postgres://xxx:xxx@192.168.0.1:0000/xxxx?sslmode=disable" # pgsql连接示例
 
 # 定时任务配置
 Jobs:
