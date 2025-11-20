@@ -53,62 +53,29 @@ PID=$!
 # 保存PID到文件
 echo $PID > "$PID_FILE"
 
-echo "服务进程已启动 (PID: $PID)"   
-echo "正在等待服务端口监听..."
-
-# 等待端口监听（无限等待，直到端口监听或进程退出）
-WAIT_COUNT=0
-PORT_LISTENING=false
-
-while true; do
-    # 检查进程是否还在运行
-    if ! ps -p "$PID" > /dev/null 2>&1; then
-        echo
-        echo "✗ 服务启动失败（进程已退出）"
-        echo
-        if [ -s "$TEMP_LOG" ]; then
-            echo "错误信息:"
-            cat "$TEMP_LOG"
-        else
-            echo "未捕获到错误信息，请检查:"
-            echo "  1. 配置文件是否正确: $CONFIG_FILE"
-            echo "  2. 可执行文件是否有问题: $EXEC_FILE"
-            echo "  3. 数据库连接是否正常"
-        fi
-        rm -f "$TEMP_LOG"
-        rm -f "$PID_FILE"
-        exit 1
-    fi
-
-    # 每3秒检查一次
-    WAIT_COUNT=$((WAIT_COUNT + 3))
-    echo "  等待中... (${WAIT_COUNT}s)"
-    sleep 3
-done
-
+echo "服务进程已启动 (PID: $PID)"
 echo
 
-if [ "$PORT_LISTENING" = true ]; then
-    echo "========================================"
-    echo "✓ 服务启动成功！"
-    echo "========================================"
-    echo "  PID: $PID"
-    echo "  PID文件: $PID_FILE"
-    echo "  配置文件: $CONFIG_FILE"
-    echo "  监听端口: $PORT"
-    echo "  日志目录: $LOG_DIR"
+echo "========================================"
+echo "✓ 服务启动成功！"
+echo "========================================"
+echo "  PID: $PID"
+echo "  PID文件: $PID_FILE"
+echo "  配置文件: $CONFIG_FILE"
+echo "  监听端口: $PORT"
+echo "  日志目录: $LOG_DIR"
+echo
+# 检查启动日志是否有错误
+if [ -s "${LOG_FILE}" ]; then
+    echo "⚠ 注意: 启动时有以下警告或错误信息:"
+    tail "${LOG_FILE}"
     echo
-    # 检查启动日志是否有错误
-    if [ -s "${LOG_FILE}" ]; then
-        echo "⚠ 注意: 启动时有以下警告或错误信息:"
-        tail "${LOG_FILE}"
-        echo
-    fi
-    # 清理临时日志
-    rm -f "$TEMP_LOG"
-    echo "使用以下命令管理服务:"
-    echo "  停止服务: ./stop.sh"
-    echo "  检查状态: ./status.sh"
-    echo "  重启服务: ./restart.sh"
-    echo "========================================"
 fi
+# 清理临时日志
+rm -f "$TEMP_LOG"
+echo "使用以下命令管理服务:"
+echo "  停止服务: ./stop.sh"
+echo "  检查状态: ./status.sh"
+echo "  重启服务: ./restart.sh"
+echo "========================================"
+
