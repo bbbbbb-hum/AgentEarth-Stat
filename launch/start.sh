@@ -64,10 +64,13 @@ echo "  PID文件: $PID_FILE"
 echo "  配置文件: $CONFIG_FILE"
 echo "  日志目录: $LOG_DIR"
 echo
+# 等待日志写入并刷新缓冲区
+sleep 1
+sync 2>/dev/null || true
 # 检查启动日志是否有错误
 if [ -s "${LOG_FILE}" ]; then
     echo "⚠ 注意: 启动时有以下警告或错误信息:"
-    tail "${LOG_FILE}"
+    tail -n 20 "${LOG_FILE}"
     echo
 fi
 echo "使用以下命令管理服务:"
