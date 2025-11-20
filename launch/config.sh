@@ -10,7 +10,6 @@ BIN_DIR="/opt/xlapps/${APP_DIR}/bin"
 LOG_DIR="/opt/xllogs/${APP_DIR}"
 TMP_DIR="/tmp/xltmp/${APP_DIR}"
 CONFIG_DIR="/opt/xlconfigs/${APP_DIR}"
-CONFIG_FILE ="${CONFIG_DIR}/${SERVICE_NAME}.conf"
 # 创建目录
 mkdir -p "$BIN_DIR"
 mkdir -p "$LOG_DIR"
@@ -28,16 +27,16 @@ PID_FILE="${CONFIG_DIR}/${PID_FILE_NAME}"
 
 
 
-# 从配置文件读取环境参数
+# 从环境配置文件读取环境参数
 ENV_CONFIG_FILE="/opt/xlconfigs/Env/env.conf"
 
-# 检查配置文件是否存在
+# 检查环境配置文件是否存在
 if [ ! -f "${ENV_CONFIG_FILE}" ]; then
     echo "错误: 环境配置文件不存在: $ENV_CONFIG_FILE"
     exit 1
 fi
 
-# 读取配置文件中的 ENV 和 MACHINE_NAME
+# 读取环境配置文件中的 ENV 和 MACHINE_NAME
 source "${ENV_CONFIG_FILE}"
 
 # 检查 ENV 是否成功读取
@@ -62,3 +61,10 @@ if [ -n "${MACHINE_NAME}" ]; then
     echo "  MACHINE_NAME: ${MACHINE_NAME}"
 fi
 echo
+# 配置文件位置
+CONFIG_FILE ="${CONFIG_DIR}/cron_${ENV}.yaml"
+# 检查配置文件是否存在
+if [ ! -f "${CONFIG_FILE}" ]; then
+    echo "错误: 环境配置文件不存在: $CONFIG_FILE"
+    exit 1
+fi
