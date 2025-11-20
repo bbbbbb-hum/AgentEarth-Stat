@@ -1,12 +1,12 @@
 #!/bin/bash
 
-# AgentEarth AgentPlatform 重启服务脚本
+# AgentEarthStat 重启服务脚本
 
 source "./config.sh"
 SCRIPT_DIR="$BIN_DIR"
 
 echo "========================================"
-echo "   AgentEarth AgentPlatform 重启服务"
+echo "   AgentEarthStat 重启服务"
 echo "========================================"
 echo "使用环境: $ENV"
 echo

@@ -1,13 +1,13 @@
 #!/bin/bash
 
-# AgentEarth AgentPlatform 停止服务脚本
+# AgentEarthStat 停止服务脚本
 
 
 source "./config.sh"
 SCRIPT_DIR="$BIN_DIR"
 
 echo "========================================"
-echo "   AgentEarth AgentPlatform 停止服务"
+echo "   AgentEarthStat 停止服务"
 echo "========================================"
 
 # 检查PID文件是否存在

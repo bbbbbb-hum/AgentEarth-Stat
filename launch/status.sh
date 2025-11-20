@@ -1,12 +1,12 @@
 #!/bin/bash
 
-# AgentEarth AgentPlatform 服务状态检查脚本
+# AgentEarthStat 服务状态检查脚本
 
 source "./config.sh"
 SCRIPT_DIR="$BIN_DIR"
 
 echo "========================================"
-echo "   AgentEarth AgentPlatform 服务状态"
+echo "   AgentEarthStat 服务状态"
 echo "========================================"
 echo "使用环境: $ENV"
 echo
@@ -65,30 +65,7 @@ done
 echo "----------------------------------------"
 echo
 
-echo "配置信息:"
-echo "----------------------------------------"
-if [ -f "$CONFIG_FILE_CHECK" ]; then
-    echo "✓ 配置文件: $CONFIG_FILE_CHECK"
-    
-    # 读取端口配置
-    PORT=$(grep "^SERVER_PORT=" "$CONFIG_FILE_CHECK" 2>/dev/null | cut -d'=' -f2 | tr -d ' "'"'"'')
-    [ -z "$PORT" ] && PORT="$DEFAULT_PORT"
-    
-    # 读取主机配置
-    HOST=$(grep "^SERVER_HOST=" "$CONFIG_FILE_CHECK" 2>/dev/null | cut -d'=' -f2 | tr -d ' "'"'"'')
-    [ -z "$HOST" ] && HOST="0.0.0.0"
-    
-    echo "  监听地址: $HOST:$PORT"
-else
-    echo "⚠ 配置文件不存在: $CONFIG_FILE_CHECK"
-    echo "  使用默认端口: $DEFAULT_PORT"
-    PORT="$DEFAULT_PORT"
-    HOST="0.0.0.0"
-fi
-echo "----------------------------------------"
-echo
-
-# 5. 检查日志目录和文件
+# 3. 检查日志目录和文件
 echo "日志信息:"
 echo "----------------------------------------"
 echo "  日志目录: $LOG_DIR"
