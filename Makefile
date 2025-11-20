@@ -40,7 +40,7 @@ build:
 	@go build $(GO_BUILD_FLAGS) -o $(BINARY_PATH) $(MAIN_PACKAGE)
 	@echo
 	@mkdir -p $(CONFIG_DIR)
-	@cp ./cron/etc/cron-api.yaml "$(CONFIG_DIR)/"
+	@cp ./cron/etc/*.yaml "$(CONFIG_DIR)/"
 	@cp ./launch/*.sh "$(BINARY_DIR)/"
 	@chmod +x $(BINARY_DIR)/*.sh
 	echo "Branch: ${CI_COMMIT_REF_NAME}, BuildNo: ${BUILD_NUMBER}, BuildTime: ${DATETIME}, CommitID: ${CI_COMMIT_ID}" > "./dist/v_${CI_COMMIT_REF_NAME}_${BUILD_NUMBER}_${DATETIME}_${CI_COMMIT_ID}.txt"
@@ -56,7 +56,7 @@ cross-build:
 	@if [ -n "$(MACHINE_NAME)" ]; then echo "  MACHINE_NAME: $(MACHINE_NAME)"; fi
 	@echo
 	@mkdir -p $(CONFIG_DIR)
-	@cp ./cron/etc/cron-api.yaml "$(CONFIG_DIR)/"
+	@cp ./cron/etc/*.yaml "$(CONFIG_DIR)/"
 	@cp ./launch/*.sh "$(BINARY_DIR)/"
 	@chmod +x $(BINARY_DIR)/*.sh
 	@echo "Branch: ${CI_COMMIT_REF_NAME}, BuildNo: ${BUILD_NUMBER}, BuildTime: ${DATETIME}, CommitID: ${CI_COMMIT_ID}" > "./dist/v_${CI_COMMIT_REF_NAME}_${BUILD_NUMBER}_${DATETIME}_${CI_COMMIT_ID}.txt"
