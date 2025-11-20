@@ -1,13 +1,13 @@
 #!/bin/bash
 
-# AgentEarth AgentPlatform 启动脚本
+# AgentEarthStat 启动脚本
 
 # 加载配置
 source "./config.sh"
 SCRIPT_DIR="$BIN_DIR"
 
 echo "========================================"
-echo "   AgentEarth AgentPlatform 启动脚本"
+echo "   AgentEarthStat  启动脚本"
 echo "========================================"
 echo "使用环境: $ENV"
 echo
@@ -26,33 +26,7 @@ if [ -n "$RUNNING_PIDS" ]; then
     exit 1
 fi
 
-# 2. 检查端口是否被占用（尝试从配置文件读取，失败则使用默认值）
-DEFAULT_PORT="9001"
-PORT=$DEFAULT_PORT
-
-
-
-echo "检查端口 $PORT 是否可用..."
-
-# 检查端口占用（优先使用 ss，其次 netstat，最后 lsof）
-if command -v ss &> /dev/null; then
-    PORT_IN_USE=$(ss -tlnp 2>/dev/null | grep ":$PORT " | grep -v "grep")
-elif command -v netstat &> /dev/null; then
-    PORT_IN_USE=$(netstat -tlnp 2>/dev/null | grep ":$PORT " | grep -v "grep")
-elif command -v lsof &> /dev/null; then
-    PORT_IN_USE=$(lsof -i ":$PORT" 2>/dev/null | grep LISTEN)
-fi
-
-if [ -n "$PORT_IN_USE" ]; then
-    echo "错误: 端口 $PORT 已被占用"
-    echo "占用详情:"
-    echo "$PORT_IN_USE"
-    echo
-    echo "请先停止占用端口的进程，或修改配置使用其他端口"
-    exit 1
-fi
-
-# 3. 清理旧的 PID 文件（如果存在）
+# 2. 清理旧的 PID 文件（如果存在）
 if [ -f "$PID_FILE" ]; then
     echo "清理旧的 PID 文件..."
     rm -f "$PID_FILE"
@@ -105,21 +79,7 @@ while true; do
         rm -f "$PID_FILE"
         exit 1
     fi
-    
-    # 检查端口是否监听
-    if command -v ss &> /dev/null; then
-        PORT_CHECK=$(ss -tlnp 2>/dev/null | grep ":$PORT " | grep "$PID")
-    elif command -v netstat &> /dev/null; then
-        PORT_CHECK=$(netstat -tlnp 2>/dev/null | grep ":$PORT " | grep "$PID")
-    elif command -v lsof &> /dev/null; then
-        PORT_CHECK=$(lsof -i ":$PORT" -sTCP:LISTEN 2>/dev/null | grep "$PID")
-    fi
-    
-    if [ -n "$PORT_CHECK" ]; then
-        PORT_LISTENING=true
-        break
-    fi
-    
+
     # 每3秒检查一次
     WAIT_COUNT=$((WAIT_COUNT + 3))
     echo "  等待中... (${WAIT_COUNT}s)"
