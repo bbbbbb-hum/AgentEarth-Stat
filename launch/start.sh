@@ -62,7 +62,6 @@ echo "========================================"
 echo "  PID: $PID"
 echo "  PID文件: $PID_FILE"
 echo "  配置文件: $CONFIG_FILE"
-echo "  监听端口: $PORT"
 echo "  日志目录: $LOG_DIR"
 echo
 # 检查启动日志是否有错误
@@ -71,8 +70,6 @@ if [ -s "${LOG_FILE}" ]; then
     tail "${LOG_FILE}"
     echo
 fi
-# 清理临时日志
-rm -f "$TEMP_LOG"
 echo "使用以下命令管理服务:"
 echo "  停止服务: ./stop.sh"
 echo "  检查状态: ./status.sh"
