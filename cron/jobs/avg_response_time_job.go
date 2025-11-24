@@ -72,12 +72,12 @@ func (j *AvgResponseTimeJob) Run() {
 	requestLogs, requestLogsTotal, err := j.svcCtx.McpServiceRequestLogsModel.GetList(j.ctx, models.ListConditions{
 		Conditions: []models.Condition{
 			{
-				Field:  "created_at",
+				Field:  "request_time",
 				Symbol: ">=",
 				Value:  prevHourStart,
 			},
 			{
-				Field:  "created_at",
+				Field:  "request_time",
 				Symbol: "<",
 				Value:  currentHourStart,
 			},
