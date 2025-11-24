@@ -41,6 +41,8 @@ echo "环境: $ENV"
 echo "配置文件: $CONFIG_FILE"
 echo "可执行文件: $EXEC_FILE"
 echo "日志目录: $LOG_DIR"
+echo "Data目录: $DATA_DIR"
+echo "PID: $PID_FILE"
 echo "启动时间: $(date)"
 echo "========================================"
 echo
