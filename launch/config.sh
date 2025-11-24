@@ -21,7 +21,7 @@ mkdir -p "$DATA_DIR"
 
 EXEC_FILE="${BIN_DIR}/${SERVICE_NAME}"
 
-LOG_FILE_NAME="${SERVICE_NAME}-$(date +%Y-%m-%d).log"
+LOG_FILE_NAME="start-$(date +%Y-%m-%d).log"
 LOG_FILE="${LOG_DIR}/${LOG_FILE_NAME}"
 
 # 服务进程ID记录文件
