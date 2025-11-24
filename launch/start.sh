@@ -64,6 +64,7 @@ echo "  PID文件: $PID_FILE"
 echo "  配置文件: $CONFIG_FILE"
 echo "  日志目录: $LOG_DIR"
 echo
+
 # 等待日志写入并刷新缓冲区
 sleep 1
 sync 2>/dev/null || true
