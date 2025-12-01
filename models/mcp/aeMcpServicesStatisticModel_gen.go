@@ -27,7 +27,7 @@ type (
 	aeMcpServicesStatisticModel interface {
 		Insert(ctx context.Context, data *AeMcpServicesStatistic) (sql.Result, error)
 		FindOne(ctx context.Context, id int64) (*AeMcpServicesStatistic, error)
-		FindOneByYearMonthDayHour(ctx context.Context, year int64, month int64, day int64, hour int64) (*AeMcpServicesStatistic, error)
+		FindOneByYearMonthDayHourServerId(ctx context.Context, year int64, month int64, day int64, hour int64, serverId string) (*AeMcpServicesStatistic, error)
 		Update(ctx context.Context, data *AeMcpServicesStatistic) error
 		Delete(ctx context.Context, id int64) error
 	}
@@ -44,7 +44,7 @@ type (
 		Month        int64     `db:"month"`         // 月
 		Day          int64     `db:"day"`           // 日
 		Hour         int64     `db:"hour"`          // 小时
-		ResponseTime int64     `db:"response_time"` // 小时平均响应时间(毫秒)
+		ResponseTime float64   `db:"response_time"` // 小时平均响应时间(毫秒)
 		RequestTotal int64     `db:"request_total"` // 小时内请求次数
 		CreateTime   time.Time `db:"create_time"`   // 创建时间
 	}
@@ -77,10 +77,10 @@ func (m *defaultAeMcpServicesStatisticModel) FindOne(ctx context.Context, id int
 	}
 }
 
-func (m *defaultAeMcpServicesStatisticModel) FindOneByYearMonthDayHour(ctx context.Context, year int64, month int64, day int64, hour int64) (*AeMcpServicesStatistic, error) {
+func (m *defaultAeMcpServicesStatisticModel) FindOneByYearMonthDayHourServerId(ctx context.Context, year int64, month int64, day int64, hour int64, serverId string) (*AeMcpServicesStatistic, error) {
 	var resp AeMcpServicesStatistic
-	query := fmt.Sprintf("select %s from %s where year = $1 and month = $2 and day = $3 and hour = $4 limit 1", aeMcpServicesStatisticRows, m.table)
-	err := m.conn.QueryRowCtx(ctx, &resp, query, year, month, day, hour)
+	query := fmt.Sprintf("select %s from %s where year = $1 and month = $2 and day = $3 and hour = $4 and server_id = $5 limit 1", aeMcpServicesStatisticRows, m.table)
+	err := m.conn.QueryRowCtx(ctx, &resp, query, year, month, day, hour, serverId)
 	switch err {
 	case nil:
 		return &resp, nil
