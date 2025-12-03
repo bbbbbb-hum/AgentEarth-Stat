@@ -10,20 +10,23 @@ BIN_DIR="/opt/xlapps/${APP_DIR}/bin"
 LOG_DIR="/opt/xllogs/${APP_DIR}"
 TMP_DIR="/tmp/xltmp/${APP_DIR}"
 CONFIG_DIR="/opt/xlconfigs/${APP_DIR}"
+DATA_DIR="/opt/xldata/${APP_DIR}"
+
 # 创建目录
 mkdir -p "$BIN_DIR"
 mkdir -p "$LOG_DIR"
 mkdir -p "$TMP_DIR"
 mkdir -p "$CONFIG_DIR"
+mkdir -p "$DATA_DIR"
 
 EXEC_FILE="${BIN_DIR}/${SERVICE_NAME}"
 
-LOG_FILE_NAME="${SERVICE_NAME}-$(date +%Y-%m-%d).log"
+LOG_FILE_NAME="start-$(date +%Y-%m-%d).log"
 LOG_FILE="${LOG_DIR}/${LOG_FILE_NAME}"
 
 # 服务进程ID记录文件
 PID_FILE_NAME="${SERVICE_NAME}.pid"
-PID_FILE="${CONFIG_DIR}/${PID_FILE_NAME}"
+PID_FILE="${DATA_DIR}/${PID_FILE_NAME}"
 
 
 

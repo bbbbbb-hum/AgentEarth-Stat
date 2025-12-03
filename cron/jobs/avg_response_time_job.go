@@ -72,12 +72,12 @@ func (j *AvgResponseTimeJob) Run() {
 	requestLogs, requestLogsTotal, err := j.svcCtx.McpServiceRequestLogsModel.GetList(j.ctx, models.ListConditions{
 		Conditions: []models.Condition{
 			{
-				Field:  "created_at",
+				Field:  "request_time",
 				Symbol: ">=",
 				Value:  prevHourStart,
 			},
 			{
-				Field:  "created_at",
+				Field:  "request_time",
 				Symbol: "<",
 				Value:  currentHourStart,
 			},
@@ -95,58 +95,74 @@ func (j *AvgResponseTimeJob) Run() {
 			if !ok {
 				serviceStatistic = mcp.AeMcpServicesStatistic{
 					ServerId:     requestLog.ServerId,
-					Year:         int64(currentHourStart.Year()),
-					Month:        int64(currentHourStart.Month()),
-					Day:          int64(currentHourStart.Day()),
-					Hour:         int64(currentHourStart.Hour()),
+					Year:         int64(prevHourStart.Year()),
+					Month:        int64(prevHourStart.Month()),
+					Day:          int64(prevHourStart.Day()),
+					Hour:         int64(prevHourStart.Hour()),
 					RequestTotal: 0,
 					ResponseTime: 0,
 				}
-				serviceStatisticMap[requestLog.ServerId] = serviceStatistic
 			}
-			serviceStatistic.RequestTotal++
-			serviceStatistic.ResponseTime += requestLog.ResponseTime //先将响应时间累加，最后再计算平均值
+
 			// 从 serviceToolsStatisticMap 中获取工具统计信息
 			serviceToolsStatistic, ok := serviceToolsStatisticMap[requestLog.ToolName]
 			if !ok {
 				serviceToolsStatistic = mcp.AeMcpServicesStatisticTools{
 					ServerId:     requestLog.ServerId,
 					ToolName:     requestLog.ToolName,
-					Year:         int64(currentHourStart.Year()),
-					Month:        int64(currentHourStart.Month()),
-					Day:          int64(currentHourStart.Day()),
-					Hour:         int64(currentHourStart.Hour()),
+					Year:         int64(prevHourStart.Year()),
+					Month:        int64(prevHourStart.Month()),
+					Day:          int64(prevHourStart.Day()),
+					Hour:         int64(prevHourStart.Hour()),
 					RequestTotal: 0,
 					ResponseTime: 0,
 				}
-				serviceToolsStatisticMap[requestLog.ToolName] = serviceToolsStatistic
 			}
-			serviceToolsStatistic.RequestTotal++
-			serviceToolsStatistic.ResponseTime += requestLog.ResponseTime //先将响应时间累加，最后再计算平均值
+			// 累加请求次数和响应时间
+			if requestLog.RequestTime.Unix() > 0 {
+				serviceStatistic.RequestTotal++
+				serviceStatistic.ResponseTime += float64(requestLog.ResponseTime) //先将响应时间累加，最后再计算平均值
+
+				serviceToolsStatistic.RequestTotal++
+				serviceToolsStatistic.ResponseTime += float64(requestLog.ResponseTime) //先将响应时间累加，最后再计算平均值
+			}
+			serviceStatisticMap[requestLog.ServerId] = serviceStatistic
+			serviceToolsStatisticMap[requestLog.ToolName] = serviceToolsStatistic
 		}
 		// 计算服务的平均响应时间
 		serviceStatisticList := make([]mcp.AeMcpServicesStatistic, 0)
 		for _, serviceStatistic := range serviceStatisticMap {
-			serviceStatistic.ResponseTime = int64(math.Round(float64(serviceStatistic.ResponseTime) / float64(serviceStatistic.RequestTotal)))
-			serviceStatisticList = append(serviceStatisticList, serviceStatistic)
+			if serviceStatistic.RequestTotal > 0 && serviceStatistic.ResponseTime > 0 {
+				serviceStatistic.ResponseTime = serviceStatistic.ResponseTime / float64(serviceStatistic.RequestTotal)
+				serviceStatisticList = append(serviceStatisticList, serviceStatistic)
+			}
 		}
 		// 批量插入服务统计信息
-		err = j.svcCtx.McpServicesStatisticModel.BatchInsert(j.ctx, serviceStatisticList)
-		if err != nil {
-			j.Errorf("BatchInsert serviceStatistic error: %v", err)
+		serviceStatisticNum := len(serviceStatisticList)
+		if serviceStatisticNum > 0 {
+			err = j.svcCtx.McpServicesStatisticModel.BatchInsert(j.ctx, serviceStatisticList)
+			if err != nil {
+				j.Errorf("BatchInsert serviceStatistic error: %v", err)
+			}
 		}
+		j.Infof("AvgResponseTimeJob First step completed,serviceStatisticTotal: %d", serviceStatisticNum)
 		// 计算工具的平均响应时间
 		serviceToolsStatisticList := make([]mcp.AeMcpServicesStatisticTools, 0)
 		for _, serviceToolsStatistic := range serviceToolsStatisticMap {
-			serviceToolsStatistic.ResponseTime = int64(math.Round(float64(serviceToolsStatistic.ResponseTime) / float64(serviceToolsStatistic.RequestTotal)))
-			serviceToolsStatisticList = append(serviceToolsStatisticList, serviceToolsStatistic)
+			if serviceToolsStatistic.RequestTotal > 0 && serviceToolsStatistic.ResponseTime > 0 {
+				serviceToolsStatistic.ResponseTime = serviceToolsStatistic.ResponseTime / float64(serviceToolsStatistic.RequestTotal)
+				serviceToolsStatisticList = append(serviceToolsStatisticList, serviceToolsStatistic)
+			}
 		}
 		// 批量插入工具统计信息
-		err = j.svcCtx.McpServicesStatisticToolsModel.BatchInsert(j.ctx, serviceToolsStatisticList)
-		if err != nil {
-			j.Errorf("BatchInsert serviceToolsStatistic error: %v", err)
+		serviceToolsStatisticNum := len(serviceToolsStatisticList)
+		if serviceToolsStatisticNum > 0 {
+			err = j.svcCtx.McpServicesStatisticToolsModel.BatchInsert(j.ctx, serviceToolsStatisticList)
+			if err != nil {
+				j.Errorf("BatchInsert serviceToolsStatistic error: %v", err)
+			}
 		}
-
+		j.Infof("AvgResponseTimeJob Second step completed,serviceToolsStatisticTotal: %d", serviceToolsStatisticNum)
 		//计算过去24小时内的服务的平均响应时间
 		serviceStatisticList24, serviceTotal24, err24 := j.svcCtx.McpServicesStatisticModel.GetList(j.ctx, models.ListConditions{
 			Conditions: []models.Condition{
@@ -205,7 +221,7 @@ func (j *AvgResponseTimeJob) Run() {
 		if servicesTotal > 0 {
 			for _, service := range services {
 				if value, ok := mcpServicesResponseTimeTotalMap[service.ServerId]; ok {
-					service.ResponseTime = float64(value.ResponseTimeTotal) / float64(value.Total)
+					service.ResponseTime = value.ResponseTimeTotal / float64(value.Total)
 					err = j.svcCtx.McpServiceModel.Update(j.ctx, service)
 					if err != nil {
 						j.Errorf("Update service error: %v", err)
@@ -214,11 +230,11 @@ func (j *AvgResponseTimeJob) Run() {
 				}
 			}
 		}
-		j.Infof("AvgResponseTimeJob completed,servicesTotal: %d,successTotal:%d", serviceTotal24, successTotal)
+		j.Infof("AvgResponseTimeJob Third step completed,servicesTotal: %d,successTotal:%d", serviceTotal24, successTotal)
 	}
 }
 
 type McpServicesResponseTimeTotal struct {
-	ResponseTimeTotal int64 `json:"response_time_total"`
-	Total             int64 `json:"request_total"`
+	ResponseTimeTotal float64 `json:"response_time_total"`
+	Total             int64   `json:"request_total"`
 }

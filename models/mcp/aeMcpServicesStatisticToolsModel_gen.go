@@ -27,7 +27,7 @@ type (
 	aeMcpServicesStatisticToolsModel interface {
 		Insert(ctx context.Context, data *AeMcpServicesStatisticTools) (sql.Result, error)
 		FindOne(ctx context.Context, id int64) (*AeMcpServicesStatisticTools, error)
-		FindOneByYearMonthDayHour(ctx context.Context, year int64, month int64, day int64, hour int64) (*AeMcpServicesStatisticTools, error)
+		FindOneByYearMonthDayHourToolName(ctx context.Context, year int64, month int64, day int64, hour int64, toolName string) (*AeMcpServicesStatisticTools, error)
 		Update(ctx context.Context, data *AeMcpServicesStatisticTools) error
 		Delete(ctx context.Context, id int64) error
 	}
@@ -45,7 +45,7 @@ type (
 		Month        int64     `db:"month"`         // 月
 		Day          int64     `db:"day"`           // 日
 		Hour         int64     `db:"hour"`          // 小时
-		ResponseTime int64     `db:"response_time"` // 小时平均响应时间(毫秒)
+		ResponseTime float64   `db:"response_time"` // 小时平均响应时间(毫秒)
 		RequestTotal int64     `db:"request_total"` // 小时内请求次数
 		CreateTime   time.Time `db:"create_time"`   // 创建时间
 	}
@@ -78,10 +78,10 @@ func (m *defaultAeMcpServicesStatisticToolsModel) FindOne(ctx context.Context, i
 	}
 }
 
-func (m *defaultAeMcpServicesStatisticToolsModel) FindOneByYearMonthDayHour(ctx context.Context, year int64, month int64, day int64, hour int64) (*AeMcpServicesStatisticTools, error) {
+func (m *defaultAeMcpServicesStatisticToolsModel) FindOneByYearMonthDayHourToolName(ctx context.Context, year int64, month int64, day int64, hour int64, toolName string) (*AeMcpServicesStatisticTools, error) {
 	var resp AeMcpServicesStatisticTools
-	query := fmt.Sprintf("select %s from %s where year = $1 and month = $2 and day = $3 and hour = $4 limit 1", aeMcpServicesStatisticToolsRows, m.table)
-	err := m.conn.QueryRowCtx(ctx, &resp, query, year, month, day, hour)
+	query := fmt.Sprintf("select %s from %s where year = $1 and month = $2 and day = $3 and hour = $4 and tool_name = $5 limit 1", aeMcpServicesStatisticToolsRows, m.table)
+	err := m.conn.QueryRowCtx(ctx, &resp, query, year, month, day, hour, toolName)
 	switch err {
 	case nil:
 		return &resp, nil

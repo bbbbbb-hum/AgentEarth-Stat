@@ -38,8 +38,8 @@ func main() {
 
 	// 注册计算响应时间平均值定时任务
 	if c.Jobs.AvgResponseTimeJob.Enable {
+		job := jobs.NewAvgResponseTimeJob(ctx, svcCtx)
 		_, err := cronScheduler.AddFunc(c.Jobs.AvgResponseTimeJob.Cron, func() {
-			job := jobs.NewAvgResponseTimeJob(ctx, svcCtx)
 			job.Run()
 		})
 		if err != nil {
@@ -47,6 +47,8 @@ func main() {
 		} else {
 			logx.Infof("AvgResponseTimeJob registered with cron: %s", c.Jobs.AvgResponseTimeJob.Cron)
 		}
+		// 立即执行一次
+		//job.Run()
 	}
 
 	// 启动调度器
