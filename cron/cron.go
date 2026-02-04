@@ -47,8 +47,32 @@ func main() {
 		} else {
 			logx.Infof("AvgResponseTimeJob registered with cron: %s", c.Jobs.AvgResponseTimeJob.Cron)
 		}
-		// 立即执行一次
-		//job.Run()
+	}
+
+	// 注册日结核销定时任务
+	if c.Jobs.SettlementJob.Enable {
+		job := jobs.NewSettlementJob(ctx, svcCtx)
+		_, err := cronScheduler.AddFunc(c.Jobs.SettlementJob.Cron, func() {
+			job.Run()
+		})
+		if err != nil {
+			logx.Errorf("Failed to add SettlementJob: %v", err)
+		} else {
+			logx.Infof("SettlementJob registered with cron: %s", c.Jobs.SettlementJob.Cron)
+		}
+	}
+
+	// 注册过期扣减定时任务
+	if c.Jobs.ExpirationDeductionJob.Enable {
+		job := jobs.NewExpirationDeductionJob(ctx, svcCtx)
+		_, err := cronScheduler.AddFunc(c.Jobs.ExpirationDeductionJob.Cron, func() {
+			job.Run()
+		})
+		if err != nil {
+			logx.Errorf("Failed to add ExpirationDeductionJob: %v", err)
+		} else {
+			logx.Infof("ExpirationDeductionJob registered with cron: %s", c.Jobs.ExpirationDeductionJob.Cron)
+		}
 	}
 
 	// 启动调度器
