@@ -109,3 +109,20 @@ func (s *ServiceContext) Close() {
 		logx.Info("NATS connection drained and closed")
 	}
 }
+
+func (sc *ServiceContext) IsReady() bool {
+	// 检查 NATS 连接是否正常
+	if sc.NatsConn == nil || !sc.NatsConn.IsConnected() {
+		return false
+	}
+
+	// 检查数据库连接是否正常（如果有数据库）
+	db, err := sc.DB.RawDB()
+	if err != nil {
+		return false
+	}
+	if db == nil || db.Ping() != nil {
+		return false
+	}
+	return true
+}
