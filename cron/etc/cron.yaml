@@ -1,9 +1,6 @@
-Name: AgentEarth-Stat.Cron
-Mode: dev
-
 Log:
   ServiceName: agent-earth-stat               # 日志中显示的服务名
-  Mode: file                      # 日志输出方式：console / file / volume
+  Mode: console                      # 日志输出方式：console / file / volume
   Encoding: json                  # 编码：plain 或 json
   Path: /opt/xllogs/AgentEarthStat/                      # 日志目录（仅 file/volume 模式生效）
   Level: info                     # 日志级别：info / error / severe
@@ -14,18 +11,18 @@ Log:
 
 # 数据库配置（如果需要）
 DB:
-  DataSource: "postgres://xxx:xxx@192.168.0.1:0000/xxxx?sslmode=disable" # pgsql连接示例
+  DataSource: "postgres://xxx:xxx@192.168.0.1:0000/xxxx?sslmode=disable" # pgsql连接示例（可改成真实数据库连接）
 
 # Redis配置
 Redis:
-  Host: "localhost:6379"
+  Host: "localhost:6379"  # redis 地址 (可改成真实redis地址)
   Type: node              # node: 单节点, cluster: 集群
   Pass: ""                # 密码，没有则留空
   Tls: false              # 是否启用TLS
 
 # NATS配置
 Nats:
-  Url: "nats://localhost:9023"   # NATS服务器地址
+  Url: "nats://localhost:9023"   # NATS服务器地址(这个改成集群中真实地址)
   # 如果需要认证，可以添加以下配置
   # Username: ""
   # Password: ""
@@ -33,7 +30,7 @@ Nats:
 
 # JetStream消费者配置
 Consumers:
-  ExampleConsumer:
+  RequestLogsConsumer:
     Enable: true
     Stream: "REQUEST_LOGS"           # JetStream Stream名称
     Subject: "logs.request"         # 订阅的主题
