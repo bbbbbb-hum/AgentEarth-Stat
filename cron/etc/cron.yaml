@@ -1,6 +1,3 @@
-Name: AgentEarth-Stat.Cron
-Mode: dev
-
 Log:
   ServiceName: agent-earth-stat               # 日志中显示的服务名
   Mode: console                   # 日志输出方式：console / file / volume
@@ -17,7 +14,33 @@ DB:
 #  DataSource: "postgres://xxx:xxx@192.168.0.1:0000/xxxx?sslmode=disable" # pgsql连接示例
   DataSource: "postgres://postgres:123456@localhost:5432/postgres?sslmode=disable"
 
-# 定时任务配置（6段cron表达式：秒 分 时 日 月 周）
+# Redis配置
+Redis:
+  Host: "localhost:6379"  # redis 地址 (可改成真实redis地址)
+  Type: node              # node: 单节点, cluster: 集群
+  Pass: ""                # 密码，没有则留空
+  Tls: false              # 是否启用TLS
+
+# NATS配置
+Nats:
+  Url: "nats://localhost:9023"   # NATS服务器地址(这个改成集群中真实地址)
+  # 如果需要认证，可以添加以下配置
+  # Username: ""
+  # Password: ""
+  # Token: ""
+
+# JetStream消费者配置
+Consumers:
+  RequestLogsConsumer:
+    Enable: true
+    Stream: "REQUEST_LOGS"           # JetStream Stream名称
+    Subject: "logs.request"         # 订阅的主题
+    Durable: "stat-consumer"        # 持久化消费者名称（用于断线重连后继续消费）
+    AckWait: 30                        # 消息确认超时时间（秒）
+    MaxDeliver: 3                      # 消息最大重试次数
+    MaxAckPending: 1000                # 最大未确认消息数
+
+# 定时任务配置
 Jobs:
   AvgResponseTimeJob:
     Enable: true
