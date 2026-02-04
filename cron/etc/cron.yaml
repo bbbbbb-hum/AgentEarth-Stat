@@ -1,3 +1,7 @@
+Name: agent-earth-state
+Host: 0.0.0.0
+Port: 9007
+
 Log:
   ServiceName: agent-earth-stat               # 日志中显示的服务名
   Mode: console                      # 日志输出方式：console / file / volume

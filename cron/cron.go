@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -31,6 +32,18 @@ func main() {
 
 	ctx := context.Background()
 	svcCtx := svc.NewServiceContext(c)
+
+	// 启动 HTTP 服务
+	go func() {
+		handlers := &Handlers{svcCtx: svcCtx}
+		addr := c.Host + ":" + fmt.Sprintf("%d", c.Port)
+		http.HandleFunc("/health", handlers.healthHandler)
+		http.HandleFunc("/ready", handlers.readyHandler)
+		logx.Infof("HTTP server started on :%s", addr)
+		if err := http.ListenAndServe(addr, nil); err != nil {
+			logx.Errorf("Failed to start HTTP server: %v", err)
+		}
+	}()
 
 	// 创建 cron 调度器
 	cronScheduler := cron.New(cron.WithSeconds())
@@ -99,4 +112,26 @@ func main() {
 	svcCtx.Close()
 
 	logx.Info("Cron service stopped")
+}
+
+type Handlers struct {
+	svcCtx *svc.ServiceContext
+}
+
+func (h *Handlers) healthHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprintf(w, `{"status": "healthy"}`)
+}
+
+func (h *Handlers) readyHandler(w http.ResponseWriter, r *http.Request) {
+	if h.svcCtx.IsReady() {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintf(w, `{"status": "ready"}`)
+	} else {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		fmt.Fprintf(w, `{"status": "not ready"}`)
+	}
 }

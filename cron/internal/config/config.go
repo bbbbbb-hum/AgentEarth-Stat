@@ -1,12 +1,13 @@
 package config
 
 import (
-	"github.com/zeromicro/go-zero/core/logx"
 	"github.com/zeromicro/go-zero/core/stores/redis"
+	"github.com/zeromicro/go-zero/rest"
 )
 
 type Config struct {
-	Log   logx.LogConf
+	rest.RestConf
+	//Log   logx.LogConf `json:"Log"`
 	Redis redis.RedisConf
 	DB    struct {
 		DataSource string
