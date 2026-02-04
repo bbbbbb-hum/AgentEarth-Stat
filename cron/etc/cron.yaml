@@ -16,6 +16,32 @@ Log:
 DB:
   DataSource: "postgres://xxx:xxx@192.168.0.1:0000/xxxx?sslmode=disable" # pgsql连接示例
 
+# Redis配置
+Redis:
+  Host: "localhost:6379"
+  Type: node              # node: 单节点, cluster: 集群
+  Pass: ""                # 密码，没有则留空
+  Tls: false              # 是否启用TLS
+
+# NATS配置
+Nats:
+  Url: "nats://localhost:9023"   # NATS服务器地址
+  # 如果需要认证，可以添加以下配置
+  # Username: ""
+  # Password: ""
+  # Token: ""
+
+# JetStream消费者配置
+Consumers:
+  ExampleConsumer:
+    Enable: true
+    Stream: "REQUEST_LOGS"           # JetStream Stream名称
+    Subject: "logs.request"         # 订阅的主题
+    Durable: "stat-consumer"        # 持久化消费者名称（用于断线重连后继续消费）
+    AckWait: 30                        # 消息确认超时时间（秒）
+    MaxDeliver: 3                      # 消息最大重试次数
+    MaxAckPending: 1000                # 最大未确认消息数
+
 # 定时任务配置
 Jobs:
   AvgResponseTimeJob:

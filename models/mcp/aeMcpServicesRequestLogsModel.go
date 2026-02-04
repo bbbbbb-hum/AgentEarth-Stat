@@ -4,6 +4,7 @@ import (
 	"AgentEarth-Stat/models"
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/zeromicro/go-zero/core/stores/sqlx"
 )
@@ -17,6 +18,7 @@ type (
 		aeMcpServicesRequestLogsModel
 		withSession(session sqlx.Session) AeMcpServicesRequestLogsModel
 		GetList(ctx context.Context, lp models.ListConditions, getList bool) (list []*AeMcpServicesRequestLogs, total int64, err error)
+		InsertBatch(ctx context.Context, list []*AeMcpServicesRequestLogs) error
 		GetAvgResponseTime(ctx context.Context, serverId string) (responseTime float64, err error)
 	}
 
@@ -82,4 +84,44 @@ func (m *customAeMcpServicesRequestLogsModel) GetAvgResponseTime(ctx context.Con
 		return
 	}
 	return responseTime, nil
+}
+
+func (m *customAeMcpServicesRequestLogsModel) InsertBatch(ctx context.Context, list []*AeMcpServicesRequestLogs) error {
+	// 参数校验
+	if len(list) == 0 {
+		return nil
+	}
+
+	// 构建插入语句
+	table := m.table
+	columns := "server_id, tool_name, request_time, return_time, response_time, status, user_id, key_id, xlcredit_amount"
+	values := make([]string, 0, len(list))
+	args := make([]interface{}, 0, len(list)*9) // 每条记录有9个字段
+
+	for i, item := range list {
+		// 占位符索引从1开始
+		placeholder := fmt.Sprintf("($%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d)",
+			i*9+1, i*9+2, i*9+3, i*9+4, i*9+5, i*9+6, i*9+7, i*9+8, i*9+9)
+		values = append(values, placeholder)
+		args = append(args,
+			item.ServerId,
+			item.ToolName,
+			item.RequestTime,
+			item.ReturnTime,
+			item.ResponseTime,
+			item.Status,
+			item.UserId,
+			item.KeyId,
+			item.XlcreditAmount)
+	}
+
+	query := fmt.Sprintf("INSERT INTO %s (%s) VALUES %s", table, columns, strings.Join(values, ","))
+
+	// 执行批量插入
+	_, err := m.conn.ExecCtx(ctx, query, args...)
+	if err != nil {
+		return fmt.Errorf("failed to insert batch: %w", err)
+	}
+
+	return nil
 }
