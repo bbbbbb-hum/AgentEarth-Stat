@@ -37,15 +37,18 @@ type (
 	}
 
 	AeMcpServicesRequestLogs struct {
-		Id           int64     `db:"id"`            // 自增主键
-		ServerId     string    `db:"server_id"`     // 服务ID
-		ToolName     string    `db:"tool_name"`     // 工具名称
-		RequestTime  time.Time `db:"request_time"`  // 请求时间
-		ReturnTime   time.Time `db:"return_time"`   // 返回时间
-		ResponseTime int64     `db:"response_time"` // 响应时间(毫秒)
-		Status       int64     `db:"status"`        // 请求状态：-1 失败 0 位置 1 成功
-		CreateTime   time.Time `db:"create_time"`   // 创建时间
-		UpdateTime   time.Time `db:"update_time"`   // 更新时间
+		Id             int64     `db:"id"`              // 自增主键
+		ServerId       string    `db:"server_id"`       // 服务ID
+		ToolName       string    `db:"tool_name"`       // 工具名称
+		RequestTime    time.Time `db:"request_time"`    // 请求时间
+		ReturnTime     time.Time `db:"return_time"`     // 返回时间
+		ResponseTime   int64     `db:"response_time"`   // 响应时间(毫秒)
+		Status         int64     `db:"status"`          // 请求状态：-1 失败 0 未知 1 成功
+		CreateTime     time.Time `db:"create_time"`     // 创建时间
+		UpdateTime     time.Time `db:"update_time"`     // 更新时间
+		UserId         string    `db:"user_id"`         // 用户id
+		KeyId          int64     `db:"key_id"`          // 密钥id
+		XlcreditAmount float64   `db:"xlcredit_amount"` // 消费金额
 	}
 )
 
@@ -77,14 +80,14 @@ func (m *defaultAeMcpServicesRequestLogsModel) FindOne(ctx context.Context, id i
 }
 
 func (m *defaultAeMcpServicesRequestLogsModel) Insert(ctx context.Context, data *AeMcpServicesRequestLogs) (sql.Result, error) {
-	query := fmt.Sprintf("insert into %s (%s) values ($1, $2, $3, $4, $5, $6)", m.table, aeMcpServicesRequestLogsRowsExpectAutoSet)
-	ret, err := m.conn.ExecCtx(ctx, query, data.ServerId, data.ToolName, data.RequestTime, data.ReturnTime, data.ResponseTime, data.Status)
+	query := fmt.Sprintf("insert into %s (%s) values ($1, $2, $3, $4, $5, $6, $7, $8, $9)", m.table, aeMcpServicesRequestLogsRowsExpectAutoSet)
+	ret, err := m.conn.ExecCtx(ctx, query, data.ServerId, data.ToolName, data.RequestTime, data.ReturnTime, data.ResponseTime, data.Status, data.UserId, data.KeyId, data.XlcreditAmount)
 	return ret, err
 }
 
 func (m *defaultAeMcpServicesRequestLogsModel) Update(ctx context.Context, data *AeMcpServicesRequestLogs) error {
 	query := fmt.Sprintf("update %s set %s where id = $1", m.table, aeMcpServicesRequestLogsRowsWithPlaceHolder)
-	_, err := m.conn.ExecCtx(ctx, query, data.Id, data.ServerId, data.ToolName, data.RequestTime, data.ReturnTime, data.ResponseTime, data.Status)
+	_, err := m.conn.ExecCtx(ctx, query, data.Id, data.ServerId, data.ToolName, data.RequestTime, data.ReturnTime, data.ResponseTime, data.Status, data.UserId, data.KeyId, data.XlcreditAmount)
 	return err
 }
 

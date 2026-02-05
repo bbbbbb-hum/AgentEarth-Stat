@@ -2,9 +2,10 @@
 goctl model pg datasource -url="postgres://wcs:123@121.89.95.89:9002/agent_earth?sslmode=disable" -table="ae_user" -dir="./users" --style=goZero -typeMap="uuid=string,UUID=string"
 goctl model pg datasource -url="postgres://wcs:123@121.89.95.89:9002/agent_earth?sslmode=disable" -table="ae_user_keys" -dir="./users" --style=goZero -typeMap="uuid=string,UUID=string"
 goctl model pg datasource -url="postgres://wcs:123@121.89.95.89:9002/agent_earth?sslmode=disable" -table="ae_user_tokens" -dir="./users" --style=goZero -typeMap="uuid=string,UUID=string"
+goctl model pg datasource -url="postgres://aeuser:aeuser123@localhost:9020/ae-db?sslmode=disable" -table="ae_user_balance_statistic_daily" -dir="./users" --style=goZero -typeMap="uuid=string,UUID=string"
 // mcp 模块
 goctl model pg datasource -url="postgres://wcs:123@121.89.95.89:9002/agent_earth?sslmode=disable" -table="ae_mcp_services" -dir="./mcp" --style=goZero -typeMap="uuid=string,UUID=string"
-goctl model pg datasource -url="postgres://wcs:123@121.89.95.89:9002/agent_earth?sslmode=disable" -table="ae_mcp_services_request_logs" -dir="./mcp" --style=goZero -typeMap="uuid=string,UUID=string"
+goctl model pg datasource -url="postgres://aeuser:aeuser123@localhost:9020/ae-db?sslmode=disable" -table="ae_mcp_services_request_logs" -dir="./mcp" --style=goZero -typeMap="uuid=string,UUID=string"
 goctl model pg datasource -url="postgres://wcs:123@121.89.95.89:9002/agent_earth?sslmode=disable" -table="ae_mcp_services_statistic" -dir="./mcp" --style=goZero -typeMap="uuid=string,UUID=string"
 goctl model pg datasource -url="postgres://wcs:123@121.89.95.89:9002/agent_earth?sslmode=disable" -table="ae_mcp_services_statistic_tools" -dir="./mcp" --style=goZero -typeMap="uuid=string,UUID=string"
 goctl model pg datasource -url="postgres://wcs:123@121.89.95.89:9002/agent_earth?sslmode=disable" -table="ae_mcp_tools" -dir="./mcp" --style=goZero -typeMap="uuid=string,UUID=string"
