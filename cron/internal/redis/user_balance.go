@@ -4,6 +4,8 @@ import (
 	"AgentEarth-Stat/cron/internal/svc"
 	"fmt"
 	"time"
+
+	"github.com/zeromicro/go-zero/core/logx"
 )
 
 // 获取用户余额key
@@ -47,6 +49,7 @@ func SetUserBalance(sc *svc.ServiceContext, userId string, balance float64, expi
 	if expireSeconds > 0 {
 		return sc.Redis.Setex(key, val, expireSeconds)
 	}
+	logx.Infof("设置用户余额到Redis: %s, %s", key, val)
 	// 默认存储24小时
 	return sc.Redis.Setex(key, val, 60*60*24)
 }

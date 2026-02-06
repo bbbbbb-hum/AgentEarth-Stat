@@ -8,8 +8,9 @@ import (
 type Config struct {
 	rest.RestConf
 	//Log   logx.LogConf `json:"Log"`
-	Redis redis.RedisConf
-	DB    struct {
+	NameSpace string
+	Redis     redis.RedisConf
+	DB        struct {
 		DataSource string
 	}
 	Nats NatsConfig

@@ -73,6 +73,7 @@ func main() {
 
 	// 注册请求日志消费者
 	if c.Consumers.RequestLogsConsumer.Enable {
+		c.Consumers.RequestLogsConsumer.Stream = c.NameSpace + "_" + c.Consumers.RequestLogsConsumer.Stream
 		consumer := consumers.NewRequestLogsConsumer(ctx, svcCtx, c.Consumers.RequestLogsConsumer)
 		if err := consumer.Start(); err != nil {
 			logx.Errorf("Failed to start RequestLogsConsumer: %v", err)

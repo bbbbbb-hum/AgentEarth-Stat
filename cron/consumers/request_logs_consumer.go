@@ -9,7 +9,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"time"
 
 	"github.com/nats-io/nats.go/jetstream"
@@ -64,102 +63,120 @@ func (c *RequestLogsConsumer) handleMessage(msg jetstream.Msg) {
 	logx.Infof("Received message on subject [%s]: %s", msg.Subject(), string(msg.Data()))
 
 	// 解析消息
-	//var exampleMsg ExampleMessage
 	var reqLog AeMcpServicesRequestLogs
 	if err := json.Unmarshal(msg.Data(), &reqLog); err != nil {
 		logx.Errorf("Failed to unmarshal message: %v", err)
-		// 解析失败，终止该消息（不再重试）
-		if err = msg.Term(); err != nil {
-			logx.Errorf("Failed to term message: %v", err)
+		// 解析失败，终止该消息（不再重试，因为消息格式错误重试也没用）
+		if termErr := msg.Term(); termErr != nil {
+			logx.Errorf("Failed to term message: %v", termErr)
 		}
 		return
 	}
-	// 更新用户账户表数据
-	//if requestLogsBatch.Count > 0 {
-	var requestLogsList []*mcp.AeMcpServicesRequestLogs
-	//for _, log := range requestLogsBatch.Logs {
-	// 日志中消费金额大于0才会触发账户更新
-	if reqLog.XlcreditAmount > 0 {
-		//查询数据库中当天的用户账户数据
-		userBalance, err := c.svcCtx.UserBalanceStatisticDailyModel.FindOneByDayUserId(c.ctx, reqLog.CreateTime, reqLog.UserId)
-		if err != nil && !errors.Is(err, sqlx.ErrNotFound) {
-			logx.Errorf("Failed to find user balance: %v", err)
-			return
-		}
-		if userBalance == nil {
-			// 查询最后一个用户账户数据
-			userBalance, err = c.svcCtx.UserBalanceStatisticDailyModel.FindOneLastDayByUserId(c.ctx, reqLog.UserId)
+	logx.Infof("Received message: %+v", reqLog)
+	// 用于记录事务中更新后的余额，用于后续同步Redis
+	var updatedBalance float64
+	var needSyncRedis bool
+
+	// 使用事务处理：更新用户账户 + 插入日志
+	err := c.svcCtx.DB.TransactCtx(c.ctx, func(ctx context.Context, session sqlx.Session) error {
+		// 在事务中创建 Model 实例
+		userBalanceModel := users.NewAeUserBalanceStatisticDailyModel(sqlx.NewSqlConnFromSession(session))
+		requestLogsModel := mcp.NewAeMcpServicesRequestLogsModel(sqlx.NewSqlConnFromSession(session))
+
+		// 日志中消费金额大于0才会触发账户更新
+		if reqLog.XlcreditAmount > 0 {
+			// 查询数据库中当天的用户账户数据
+			userBalance, err := userBalanceModel.FindOneByDayUserId(ctx, reqLog.CreateTime, reqLog.UserId)
 			if err != nil && !errors.Is(err, sqlx.ErrNotFound) {
-				logx.Errorf("Failed to find user balance: %v", err)
-				return
+				return err
 			}
-			var userBalanceTodayBalance float64 = 0
-			if userBalance != nil {
-				userBalanceTodayBalance = userBalance.Balance
+			if userBalance == nil {
+				// 查询最后一个用户账户数据
+				userBalance, err = userBalanceModel.FindOneLastDayByUserId(ctx, reqLog.UserId)
+				if err != nil && !errors.Is(err, sqlx.ErrNotFound) {
+					return err
+				}
+				var userBalanceTodayBalance float64 = 0
+				if userBalance != nil {
+					userBalanceTodayBalance = userBalance.Balance
+				}
+				// 创建今日用户余额
+				userBalance = &users.AeUserBalanceStatisticDaily{
+					UserId:  reqLog.UserId,
+					Day:     reqLog.CreateTime,
+					Balance: userBalanceTodayBalance,
+				}
+				_, err = userBalanceModel.Insert(ctx, userBalance)
+				if err != nil {
+					return err
+				}
 			}
-			// 创建今日用户余额
-			userBalance = &users.AeUserBalanceStatisticDaily{
-				UserId:  reqLog.UserId,
-				Day:     reqLog.CreateTime,
-				Balance: userBalanceTodayBalance,
-			}
-			_, err = c.svcCtx.UserBalanceStatisticDailyModel.Insert(c.ctx, userBalance)
+
+			// 计算扣减后的余额并存入数据库
+			userBalanceCalculate := decimal.NewFromFloat(userBalance.Balance)
+			logXlcreditAmount := decimal.NewFromFloat(reqLog.XlcreditAmount)
+			userBalanceNewBalance, _ := userBalanceCalculate.Sub(logXlcreditAmount).Float64()
+
+			userBalance.Balance = userBalanceNewBalance
+			userBalance.UpdateTime = reqLog.CreateTime
+			err = userBalanceModel.Update(ctx, userBalance)
 			if err != nil {
-				logx.Errorf("Failed to insert user balance: %v", err)
-				return
+				return err
 			}
+
+			// 记录更新后的余额，用于事务成功后同步Redis
+			updatedBalance = userBalanceNewBalance
+			needSyncRedis = true
 		}
-		//计算扣减后的余额并存入数据库
-		userBalanceStr := fmt.Sprintf("%.8f", userBalance.Balance)
-		userBalanceCalculate := decimal.RequireFromString(userBalanceStr)
-		logXlcreditAmountStr := fmt.Sprintf("%.8f", reqLog.XlcreditAmount)
-		logXlcreditAmount := decimal.RequireFromString(logXlcreditAmountStr)
-		userBalanceNewBalance, ok := userBalanceCalculate.Sub(logXlcreditAmount).Float64()
-		if !ok {
-			logx.Errorf("Failed to subtract user balance: %v", err)
-			return
+
+		// 插入请求日志
+		requestLogs := mcp.AeMcpServicesRequestLogs{
+			ServerId:       reqLog.ServerId,
+			ToolName:       reqLog.ToolName,
+			RequestTime:    reqLog.RequestTime,
+			ReturnTime:     reqLog.ReturnTime,
+			ResponseTime:   int64(reqLog.ResponseTime),
+			Status:         int64(reqLog.Status),
+			CreateTime:     reqLog.CreateTime,
+			UpdateTime:     reqLog.UpdateTime,
+			UserId:         reqLog.UserId,
+			KeyId:          reqLog.KeyId,
+			XlcreditAmount: reqLog.XlcreditAmount,
 		}
-		userBalance.Balance = userBalanceNewBalance
-		userBalance.UpdateTime = reqLog.CreateTime
-		err = c.svcCtx.UserBalanceStatisticDailyModel.Update(c.ctx, userBalance)
+		_, err := requestLogsModel.Insert(ctx, &requestLogs)
 		if err != nil {
-			logx.Errorf("Failed to update user balance: %v", err)
-			return
+			return err
 		}
-		// 同步到redis缓存
-		overbalanceKey := redis.GetUserBalanceKey(reqLog.UserId)
-		err = redis.SetUserBalance(c.svcCtx, overbalanceKey, userBalance.Balance, 0)
-		if err != nil {
-			logx.Errorf("Failed to update redis balance for user %s: %v", reqLog.UserId, err)
-			return
-		}
-	}
-	var requestLogs = mcp.AeMcpServicesRequestLogs{
-		Id:           int64(reqLog.Id),
-		ServerId:     reqLog.ServerId,
-		ToolName:     reqLog.ToolName,
-		RequestTime:  reqLog.RequestTime,
-		ReturnTime:   reqLog.ReturnTime,
-		ResponseTime: int64(reqLog.ResponseTime),
-		Status:       int64(reqLog.Status),
-		CreateTime:   reqLog.CreateTime,
-		UpdateTime:   reqLog.UpdateTime,
-		UserId:       reqLog.UserId,
-	}
-	//requestLogsList = append(requestLogsList, &requestLogs)
-	//}
-	//将日志存入数据库
-	//err := c.svcCtx.McpServiceRequestLogsModel.InsertBatch(c.ctx, requestLogsList)
-	_, err := c.svcCtx.McpServiceRequestLogsModel.Insert(c.ctx, &requestLogs)
+
+		return nil
+	})
+
 	if err != nil {
-		logx.Errorf("Failed to insert request logs: %v", err)
-		logx.Infof("request logs list: %v", requestLogsList)
+		logx.Errorf("Transaction failed for user %s: %v", reqLog.UserId, err)
+		// 事务失败，延迟重试
+		c.nakWithDelay(msg)
+		return
 	}
-	logx.Infof("request logs batch insert success,count: %d", len(requestLogsList))
-	//}
+
+	logx.Infof("Transaction success for user: %s, server: %s", reqLog.UserId, reqLog.ServerId)
+
+	// 事务成功后同步Redis（失败只记录日志，不影响消息确认）
+	if needSyncRedis {
+		err = redis.SetUserBalance(c.svcCtx, reqLog.UserId, updatedBalance, 0)
+		if err != nil {
+			logx.Errorf("Failed to sync redis balance for user %s: %v", reqLog.UserId, err)
+		}
+	}
 
 	// 处理成功，确认消息
 	if ackErr := msg.Ack(); ackErr != nil {
 		logx.Errorf("Failed to ack message: %v", ackErr)
+	}
+}
+
+// nakWithDelay 处理失败时延迟重试
+func (c *RequestLogsConsumer) nakWithDelay(msg jetstream.Msg) {
+	if err := msg.NakWithDelay(5 * time.Second); err != nil {
+		logx.Errorf("Failed to nak message with delay: %v", err)
 	}
 }
