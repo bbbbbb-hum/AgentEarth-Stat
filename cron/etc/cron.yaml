@@ -54,3 +54,8 @@ Jobs:
     Enable: true
     Cron: "0 0 18 * * ?" # 每天 中国02:00 过期扣减（UTC 18:00）
     # Cron: "15 * * * * ?" # 测试：启动后第15s执行
+
+#TODO: 测试 API（Apifox 触发定时任务用，生产请关闭）
+TestAPI:
+  Enable: true   # 设为 true 时启动 HTTP 9090，POST /test/run-job
+  Port: 9090

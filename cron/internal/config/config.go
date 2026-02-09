@@ -27,6 +27,12 @@ type Config struct {
 		}
 	}
 	Consumers ConsumersConfig
+
+	//TODO: TestAPI 仅用于本地/Apifox 触发定时任务，生产请关闭
+	TestAPI struct {
+		Enable bool `json:",optional"`
+		Port   int  `json:",optional,default=9090"`
+	}
 }
 
 // NatsConfig NATS连接配置

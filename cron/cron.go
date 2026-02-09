@@ -12,6 +12,7 @@ import (
 	"AgentEarth-Stat/cron/internal/config"
 	"AgentEarth-Stat/cron/internal/svc"
 	"AgentEarth-Stat/cron/jobs"
+	"AgentEarth-Stat/cron/testapi" //TODO: TestAPI 仅用于本地/Apifox 触发定时任务，生产请关闭
 
 	"github.com/robfig/cron/v3"
 	"github.com/zeromicro/go-zero/core/conf"
@@ -101,6 +102,11 @@ func main() {
 	// }
 
 	fmt.Println("Cron service started...")
+
+	//TODO: 测试 API：用于 Apifox 触发定时任务（仅当开启时）
+	if c.TestAPI.Enable {
+		go testapi.Start(c, svcCtx, ctx)
+	}
 
 	// 优雅关闭
 	quit := make(chan os.Signal, 1)

@@ -78,9 +78,11 @@ func (j *ExpirationDeductionJob) processSingleRecord(record expiredRechargeRecor
 	err := j.svcCtx.DB.TransactCtx(j.ctx, func(ctx context.Context, session sqlx.Session) error {
 		// 幂等检查：若已存在该批次的过期扣减记录，则跳过
 		var existsCount int64
-		_ = session.QueryRowCtx(ctx, &existsCount,
+		if err := session.QueryRowCtx(ctx, &existsCount,
 			"SELECT COUNT(*) FROM ae_user_recharge_record WHERE related_recharge_id = $1 AND xlcredit_amount < 0 AND charge_type = 4",
-			record.Id)
+			record.Id); err != nil {
+			return fmt.Errorf("幂等检查查询失败: %w", err)
+		}
 		if existsCount > 0 {
 			return nil
 		}
