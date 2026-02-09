@@ -1,10 +1,22 @@
 package redis
 
-import "strings"
+import (
+	"AgentEarth-Stat/cron/internal/svc"
+	"strings"
+)
 
-func BuildKey(parts ...string) string {
+type RedisConfig struct {
+	Svc *svc.ServiceContext
+}
+
+func NewRedisConfig(svc *svc.ServiceContext) *RedisConfig {
+	return &RedisConfig{
+		Svc: svc,
+	}
+}
+func (c *RedisConfig) BuildKey(parts ...string) string {
 	//clientMu.RLock()
-	prefix := normalizePrefix("ae")
+	prefix := c.Svc.Config.NameSpace + "_ae"
 	//clientMu.RUnlock()
 
 	cleanParts := make([]string, 0, len(parts))
@@ -22,8 +34,4 @@ func BuildKey(parts ...string) string {
 		return prefix
 	}
 	return prefix + ":" + strings.Join(cleanParts, ":")
-}
-
-func normalizePrefix(prefix string) string {
-	return strings.Trim(prefix, ":")
 }
