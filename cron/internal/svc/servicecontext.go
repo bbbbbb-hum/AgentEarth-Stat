@@ -31,8 +31,12 @@ func NewServiceContext(c config.Config) *ServiceContext {
 	db := sqlx.NewSqlConn("postgres", c.DB.DataSource)
 
 	// 初始化Redis
-	rds := redis.MustNewRedis(c.Redis)
-	logx.Info("Redis connected successfully")
+	rds, err := redis.NewRedis(c.Redis)
+	if err != nil {
+		logx.Errorf("Redis connected field: %v", err)
+	} else {
+		logx.Info("Redis connected successfully")
+	}
 
 	// 初始化NATS连接
 	nc := initNatsConn(c.Nats)
@@ -40,7 +44,6 @@ func NewServiceContext(c config.Config) *ServiceContext {
 	// 初始化JetStream
 	var js jetstream.JetStream
 	if nc != nil {
-		var err error
 		js, err = jetstream.New(nc)
 		if err != nil {
 			logx.Errorf("Failed to create JetStream context: %v", err)
@@ -114,6 +117,15 @@ func (sc *ServiceContext) IsReady() bool {
 	// 检查 NATS 连接是否正常
 	if sc.NatsConn == nil || !sc.NatsConn.IsConnected() {
 		return false
+	}
+
+	// 检查 Redis 连接是否正常
+	if sc.Redis == nil {
+		return false
+	}
+	res := sc.Redis.Ping()
+	if res != true {
+		return res
 	}
 
 	// 检查数据库连接是否正常（如果有数据库）
