@@ -3,8 +3,8 @@ package jobs
 import (
 	"AgentEarth-Stat/cron/internal/fund"
 	"AgentEarth-Stat/cron/internal/svc"
+	fundmodel "AgentEarth-Stat/models/fund"
 	"context"
-	"database/sql"
 	"fmt"
 	"time"
 
@@ -28,13 +28,6 @@ func NewExpirationDeductionJob(ctx context.Context, svcCtx *svc.ServiceContext) 
 	}
 }
 
-type expiredRechargeRecord struct {
-	Id             int64        `db:"id"`
-	UserId         string       `db:"user_id"`
-	XlcreditAmount float64      `db:"xlcredit_amount"`
-	ExpireTime     sql.NullTime `db:"expire_time"`
-}
-
 func (j *ExpirationDeductionJob) Run() {
 	j.Infof("[ExpirationDeductionJob] 开始扫描已过期充值记录")
 	if err := j.processExpiration(); err != nil {
@@ -43,13 +36,8 @@ func (j *ExpirationDeductionJob) Run() {
 }
 
 func (j *ExpirationDeductionJob) processExpiration() error {
-	query := `
-		SELECT id, user_id, xlcredit_amount, expire_time
-		FROM ae_user_recharge_record
-		WHERE expire_time < NOW() AND xlcredit_amount > 0
-	`
-	var expiredRecords []expiredRechargeRecord
-	if err := j.svcCtx.DB.QueryRowsCtx(j.ctx, &expiredRecords, query); err != nil {
+	expiredRecords, err := j.svcCtx.UserRechargeRecordModel.QueryExpiredRechargeRecords(j.ctx)
+	if err != nil {
 		j.Errorf("[ExpirationDeductionJob] 查询过期记录失败: %v", err)
 		return err
 	}
@@ -73,21 +61,21 @@ func (j *ExpirationDeductionJob) processExpiration() error {
 	return nil
 }
 
-func (j *ExpirationDeductionJob) processSingleRecord(record expiredRechargeRecord) (bool, error) {
+func (j *ExpirationDeductionJob) processSingleRecord(record fundmodel.ExpiredRechargeRecordRow) (bool, error) {
 	var deducted bool
 	err := j.svcCtx.DB.TransactCtx(j.ctx, func(ctx context.Context, session sqlx.Session) error {
+		txRechargeModel := j.svcCtx.UserRechargeRecordModel.WithSession(session)
+
 		// 幂等检查：若已存在该批次的过期扣减记录，则跳过
-		var existsCount int64
-		if err := session.QueryRowCtx(ctx, &existsCount,
-			"SELECT COUNT(*) FROM ae_user_recharge_record WHERE related_recharge_id = $1 AND xlcredit_amount < 0 AND charge_type = 4",
-			record.Id); err != nil {
+		existsCount, err := txRechargeModel.CountExpirationDeductionExists(ctx, record.Id)
+		if err != nil {
 			return fmt.Errorf("幂等检查查询失败: %w", err)
 		}
 		if existsCount > 0 {
 			return nil
 		}
 		initialAmount := decimal.NewFromFloat(record.XlcreditAmount)
-		balance, err := fund.CalculateRealTimeBalance(ctx, session, record.Id, initialAmount)
+		balance, err := fund.CalculateRealTimeBalance(ctx, txRechargeModel, record.Id, initialAmount)
 		if err != nil {
 			return err
 		}
@@ -95,20 +83,18 @@ func (j *ExpirationDeductionJob) processSingleRecord(record expiredRechargeRecor
 			return nil
 		}
 		negativeAmount := balance.Neg()
-		insertQuery := `
-			INSERT INTO ae_user_recharge_record (
-				user_id, xlcredit_amount, pay_time, create_time, update_time,
-				charge_source, charge_type, remark, related_recharge_id, operator
-			)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-		`
 		now := time.Now()
 		remark := fmt.Sprintf("充值记录 %d 到期自动清理", record.Id)
-		chargeSource := int64(-2)
-		chargeType := int64(4)
-		_, err = session.ExecCtx(ctx, insertQuery,
-			record.UserId, negativeAmount, now, now, now,
-			chargeSource, chargeType, remark, record.Id, "System_Auto")
+		err = txRechargeModel.InsertExpirationDeductionRecord(ctx, fundmodel.ExpirationDeductionParams{
+			UserId:            record.UserId,
+			NegativeAmount:    negativeAmount,
+			Now:               now,
+			ChargeSource:      -2,
+			ChargeType:        4,
+			Remark:            remark,
+			RelatedRechargeID: record.Id,
+			Operator:          "System_Auto",
+		})
 		if err != nil {
 			return err
 		}

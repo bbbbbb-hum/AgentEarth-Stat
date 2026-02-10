@@ -2,10 +2,8 @@ package svc
 
 import (
 	"AgentEarth-Stat/cron/internal/config"
+	"AgentEarth-Stat/models/fund"
 	"AgentEarth-Stat/models/mcp"
-	"AgentEarth-Stat/models/users"
-
-	// 引入你需要的 model
 
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
@@ -24,7 +22,10 @@ type ServiceContext struct {
 	McpServiceRequestLogsModel     mcp.AeMcpServicesRequestLogsModel
 	McpServicesStatisticModel      mcp.AeMcpServicesStatisticModel
 	McpServicesStatisticToolsModel mcp.AeMcpServicesStatisticToolsModel
-	UserBalanceStatisticDailyModel users.AeUserBalanceStatisticDailyModel
+	UserBalanceStatisticDailyModel     fund.AeUserBalanceStatisticDailyModel
+	UserRechargeRecordModel            fund.AeUserRechargeRecordModel
+	RechargeAllocationModel            fund.AeRechargeAllocationModel
+	UserConsumptionRecordDailyModel    fund.AeUserConsumptionRecordDailyModel
 }
 
 func NewServiceContext(c config.Config) *ServiceContext {
@@ -59,7 +60,10 @@ func NewServiceContext(c config.Config) *ServiceContext {
 		McpServiceRequestLogsModel:     mcp.NewAeMcpServicesRequestLogsModel(db),
 		McpServicesStatisticModel:      mcp.NewAeMcpServicesStatisticModel(db),
 		McpServicesStatisticToolsModel: mcp.NewAeMcpServicesStatisticToolsModel(db),
-		UserBalanceStatisticDailyModel: users.NewAeUserBalanceStatisticDailyModel(db),
+		UserBalanceStatisticDailyModel:     fund.NewAeUserBalanceStatisticDailyModel(db),
+		UserRechargeRecordModel:            fund.NewAeUserRechargeRecordModel(db),
+		RechargeAllocationModel:            fund.NewAeRechargeAllocationModel(db),
+		UserConsumptionRecordDailyModel:    fund.NewAeUserConsumptionRecordDailyModel(db),
 	}
 }
 

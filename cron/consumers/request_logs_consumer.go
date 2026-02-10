@@ -4,8 +4,8 @@ import (
 	"AgentEarth-Stat/cron/internal/config"
 	"AgentEarth-Stat/cron/internal/redis"
 	"AgentEarth-Stat/cron/internal/svc"
+	fundmodel "AgentEarth-Stat/models/fund"
 	"AgentEarth-Stat/models/mcp"
-	"AgentEarth-Stat/models/users"
 	"context"
 	"encoding/json"
 	"errors"
@@ -98,7 +98,7 @@ func (c *RequestLogsConsumer) handleMessage(msg jetstream.Msg) {
 				userBalanceTodayBalance = userBalance.Balance
 			}
 			// 创建今日用户余额
-			userBalance = &users.AeUserBalanceStatisticDaily{
+			userBalance = &fundmodel.AeUserBalanceStatisticDaily{
 				UserId:  reqLog.UserId,
 				Day:     reqLog.CreateTime,
 				Balance: userBalanceTodayBalance,
