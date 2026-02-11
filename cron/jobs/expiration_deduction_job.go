@@ -36,28 +36,52 @@ func (j *ExpirationDeductionJob) Run() {
 }
 
 func (j *ExpirationDeductionJob) processExpiration() error {
-	expiredRecords, err := j.svcCtx.UserRechargeRecordModel.QueryExpiredRechargeRecords(j.ctx)
-	if err != nil {
-		j.Errorf("[ExpirationDeductionJob] 查询过期记录失败: %v", err)
-		return err
+	const pageSize int64 = 1000
+
+	var (
+		lastId        int64 = 0
+		totalChecked        = 0
+		totalDeducted       = 0
+	)
+
+	for {
+		expiredRecords, err := j.svcCtx.UserRechargeRecordModel.QueryExpiredRechargeRecords(j.ctx, lastId, pageSize)
+		if err != nil {
+			j.Errorf("[ExpirationDeductionJob] 查询过期记录失败: %v", err)
+			return err
+		}
+		if len(expiredRecords) == 0 {
+			break
+		}
+
+		j.Infof("[ExpirationDeductionJob] 本批次待检查过期记录数=%d, lastId=%d", len(expiredRecords), lastId)
+
+		for _, record := range expiredRecords {
+			totalChecked++
+			lastId = record.Id
+
+			deducted, procErr := j.processSingleRecord(record)
+			if procErr != nil {
+				j.Errorf("[ExpirationDeductionJob] 处理批次 %d 失败: %v", record.Id, procErr)
+				continue
+			}
+			if deducted {
+				totalDeducted++
+			}
+		}
+
+		// 若本批已不足一整页，则说明已处理完所有剩余数据
+		if int64(len(expiredRecords)) < pageSize {
+			break
+		}
 	}
-	if len(expiredRecords) == 0 {
+
+	if totalChecked == 0 {
 		j.Infof("[ExpirationDeductionJob] 未发现需要处理的过期充值记录")
 		return nil
 	}
-	j.Infof("[ExpirationDeductionJob] 共 %d 条过期记录待检查", len(expiredRecords))
-	deductedCount := 0
-	for _, record := range expiredRecords {
-		deducted, procErr := j.processSingleRecord(record)
-		if procErr != nil {
-			j.Errorf("[ExpirationDeductionJob] 处理批次 %d 失败: %v", record.Id, procErr)
-			continue
-		}
-		if deducted {
-			deductedCount++
-		}
-	}
-	j.Infof("[ExpirationDeductionJob] 完成: 检查=%d, 本次扣减=%d", len(expiredRecords), deductedCount)
+
+	j.Infof("[ExpirationDeductionJob] 完成: 总检查=%d, 本次总扣减=%d", totalChecked, totalDeducted)
 	return nil
 }
 

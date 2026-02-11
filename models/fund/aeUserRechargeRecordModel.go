@@ -13,21 +13,23 @@ import (
 
 var _ AeUserRechargeRecordModel = (*customAeUserRechargeRecordModel)(nil)
 
-type (
-	// AeUserRechargeRecordModel is an interface to be customized, add more methods here,
-	// and implement the added methods in customAeUserRechargeRecordModel.
-	AeUserRechargeRecordModel interface {
-		aeUserRechargeRecordModel
-		WithSession(session sqlx.Session) AeUserRechargeRecordModel
-		// 统计侧：资金增量、FEFO 候选、兜底、过期充值、幂等检查、过期扣减插入、实时余额
-		QueryBalanceDeltaSince(ctx context.Context, userId string, from time.Time) (string, error)
-		QueryRechargeCandidatesForSettlement(ctx context.Context, userId string, dayEnd time.Time) ([]RechargeRecordRow, error)
-		QueryFallbackRechargeRecord(ctx context.Context, userId string) (*RechargeRecordRow, error)
-		QueryExpiredRechargeRecords(ctx context.Context) ([]ExpiredRechargeRecordRow, error)
-		CountExpirationDeductionExists(ctx context.Context, rechargeId int64) (int64, error)
-		InsertExpirationDeductionRecord(ctx context.Context, p ExpirationDeductionParams) error
-		CalculateRealTimeBalance(ctx context.Context, recordID int64, initialAmount decimal.Decimal) (decimal.Decimal, error)
-	}
+	type (
+		// AeUserRechargeRecordModel is an interface to be customized, add more methods here,
+		// and implement the added methods in customAeUserRechargeRecordModel.
+		AeUserRechargeRecordModel interface {
+			aeUserRechargeRecordModel
+			WithSession(session sqlx.Session) AeUserRechargeRecordModel
+			// 统计侧：资金增量、FEFO 候选、兜底、过期充值、幂等检查、过期扣减插入、实时余额
+			QueryBalanceDeltaSince(ctx context.Context, userId string, from time.Time) (string, error)
+			QueryRechargeCandidatesForSettlement(ctx context.Context, userId string, dayEnd time.Time) ([]RechargeRecordRow, error)
+			QueryFallbackRechargeRecord(ctx context.Context, userId string) (*RechargeRecordRow, error)
+			// QueryExpiredRechargeRecords 分页查询已过期且金额为正、且未做过过期扣减的充值记录，按 id 递增做 keyset 分页。
+			// 参数 lastId 为上一页最后一条记录的 id（第一页传 0），limit 为每页条数。
+			QueryExpiredRechargeRecords(ctx context.Context, lastId, limit int64) ([]ExpiredRechargeRecordRow, error)
+			CountExpirationDeductionExists(ctx context.Context, rechargeId int64) (int64, error)
+			InsertExpirationDeductionRecord(ctx context.Context, p ExpirationDeductionParams) error
+			CalculateRealTimeBalance(ctx context.Context, recordID int64, initialAmount decimal.Decimal) (decimal.Decimal, error)
+		}
 
 	customAeUserRechargeRecordModel struct {
 		*defaultAeUserRechargeRecordModel
@@ -129,16 +131,34 @@ func (m *customAeUserRechargeRecordModel) QueryFallbackRechargeRecord(ctx contex
 	return &rec, nil
 }
 
-// QueryExpiredRechargeRecords 查询已过期且金额为正的充值记录，供过期扣减 job 扫描。
-// 条件：expire_time < NOW() AND xlcredit_amount > 0。
-func (m *customAeUserRechargeRecordModel) QueryExpiredRechargeRecords(ctx context.Context) ([]ExpiredRechargeRecordRow, error) {
+// QueryExpiredRechargeRecords 分页查询已过期且金额为正、且尚未做过过期扣减的充值记录，供过期扣减 job 扫描。
+// 条件：expire_time < NOW() AND xlcredit_amount > 0 AND NOT EXISTS(对应的过期扣减记录) AND id > lastId。
+// 使用按 id 递增的 keyset 分页，避免大 offset 带来的性能问题。
+func (m *customAeUserRechargeRecordModel) QueryExpiredRechargeRecords(ctx context.Context, lastId, limit int64) ([]ExpiredRechargeRecordRow, error) {
 	const query = `
-		SELECT id, user_id, xlcredit_amount, expire_time
-		FROM ae_user_recharge_record
-		WHERE expire_time < NOW() AND xlcredit_amount > 0
+		SELECT
+			r.id,
+			r.user_id,
+			r.xlcredit_amount,
+			r.expire_time
+		FROM ae_user_recharge_record r
+		WHERE
+			r.expire_time < NOW()
+			AND r.xlcredit_amount > 0
+			AND r.id > $1
+			AND NOT EXISTS (
+				SELECT 1
+				FROM ae_user_recharge_record d
+				WHERE
+					d.related_recharge_id = r.id
+					AND d.xlcredit_amount < 0
+					AND d.charge_type = 4
+			)
+		ORDER BY r.id ASC
+		LIMIT $2
 	`
 	var list []ExpiredRechargeRecordRow
-	if err := m.conn.QueryRowsCtx(ctx, &list, query); err != nil {
+	if err := m.conn.QueryRowsCtx(ctx, &list, query, lastId, limit); err != nil {
 		return nil, err
 	}
 	return list, nil
