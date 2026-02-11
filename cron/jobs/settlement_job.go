@@ -89,7 +89,6 @@ func (j *SettlementJob) processUserDailyConsumption(daily *fundmodel.DailyRecord
 		// 事务内按“已分摊金额”重算剩余待扣，避免部分成功后重跑又从全额开始扣导致过度分摊
 		// allocatedSumStr 代表“当前已核销金额”——针对某一条消费记录
 		// 查询已分摊金额失败时，直接中断事务，避免退化为“从消费总额重新扣”导致过度核销（避免按照错误金额执行整体核销任务）
-		// TODO: 这里应该有报错预警，等待人工处理
 		allocatedSumStr, err := txAllocModel.GetAllocatedSumByConsumptionDailyId(ctx, daily.Id)
 		if err != nil {
 			return err
@@ -137,7 +136,8 @@ func (j *SettlementJob) processUserDailyConsumption(daily *fundmodel.DailyRecord
 			deltaBal = val
 		}
 
-		// 3. 全局余额 = 快照 + 增量；全局余额代表今日还未扣减消费金额时的可用余额
+		// 3. 全局余额 = 快照 + 增量；代表「处理这条日消费时」用户的总净资产
+		// 循环中每核销一笔会扣减，表示已被本笔消费占用的额度，后续批次的有效余额上限用剩余全局余额来卡
 		globalBalance := snapshotBal.Add(deltaBal)
 
 		// 查候选充值记录：FEFO 排序
@@ -193,6 +193,9 @@ func (j *SettlementJob) processUserDailyConsumption(daily *fundmodel.DailyRecord
 			// 2. 如果当前记录已经是负的（已经透支过），直接跳过
 			// 它没资格参与扣款；只有当它不是最后一条记录时才跳过，如果是最后一条，即使已透支也要继续被消费记录映射。
 			// 场景：昨天 A 透支变为 -50（当时是最后一条）；今天充了 B，A 变成倒数第二条，遍历到 A 时因其已透支且非最后一条则跳过，扣 B。
+			//中间那些已经没钱/欠钱的老批次，不再参与本次消费核销；只有队尾那一条（最后一条记录），即使已经透支，也要继续扛消费。
+			//如果你连最后一条也跳过，就会出现“这笔消费在数据库里找不到任何归属批次”的情况，钱不知道挂在哪条充值上；
+			//设计上规定：“队尾那一条是兜底批次（死磕逻辑），不管它原来是正是负，都必须承接所有剩余消费”，这样每一块消费都能找到具体来源批次，账能对上。
 			if !isLastRecord && balance.LessThanOrEqual(decimal.Zero) {
 				continue
 			}
@@ -237,16 +240,16 @@ func (j *SettlementJob) processUserDailyConsumption(daily *fundmodel.DailyRecord
 					return err
 				}
 				if rowsAffected == 0 {
-					// 已存在分摊记录（ON CONFLICT DO NOTHING），仍需扣减内存中的剩余待核销额，否则重试时会误报「仍有剩余」
-					existingDeductStr, qErr := txAllocModel.GetExistingDeductedAmount(ctx, daily.Id, rec.Id)
+					// 已存在分摊记录（ON CONFLICT DO NOTHING）。重查该日消费的已核销总额并重算剩余，单实例不重复扣减、并发时能反映其他进程已摊掉的金额
+					allocatedSumStr, qErr := txAllocModel.GetAllocatedSumByConsumptionDailyId(ctx, daily.Id)
 					if qErr != nil {
-						j.Errorf("[SettlementJob] 幂等分支查询已存在金额失败: daily=%d, recharge=%d, err=%v", daily.Id, rec.Id, qErr)
+						j.Errorf("[SettlementJob] 幂等分支查询已核销总额失败: daily=%d, err=%v", daily.Id, qErr)
 						return qErr
 					}
-					existingDeduct, _ := decimal.NewFromString(existingDeductStr)
-					// 【修复】重跑时用库中已存在的 deducted_amount 扣减，保证 amountToDeduct 与 DB 一致，不用 actualDeduct
-					amountToDeduct = amountToDeduct.Sub(existingDeduct)
-					j.Info("[SettlementJob] 幂等跳过: 记录(daily=%d, recharge=%d)已存在，已扣减库中金额=%s，剩余待扣=%s", daily.Id, rec.Id, existingDeductStr, amountToDeduct.String())
+					if allocatedSum, parseErr := decimal.NewFromString(allocatedSumStr); parseErr == nil {
+						amountToDeduct = consumeAmount.Sub(allocatedSum)
+					}
+					j.Info("[SettlementJob] 幂等跳过: 记录(daily=%d, recharge=%d)已存在，重算后剩余待扣=%s", daily.Id, rec.Id, amountToDeduct.String())
 					continue
 				}
 				newAllocCount++
@@ -256,8 +259,9 @@ func (j *SettlementJob) processUserDailyConsumption(daily *fundmodel.DailyRecord
 				}
 				j.Infof("[SettlementJob] 核销详情: user_id=%s, 扣减金额=%s, 充值批次ID=%d, 批次过期时间=%s, 操作时间=%s, 剩余需扣=%s",
 					daily.UserId, actualDeduct.String(), rec.Id, expireTimeStr, now.Format(time.RFC3339), amountToDeduct.Sub(actualDeduct).String())
-				// 更新剩余待扣余额
+				// 更新剩余待扣金额 + 已被本笔消费占用的全局额度（后续批次的有效余额上限用剩余 globalBalance 卡）
 				amountToDeduct = amountToDeduct.Sub(actualDeduct)
+				globalBalance = globalBalance.Sub(actualDeduct)
 			}
 		}
 
