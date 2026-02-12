@@ -7,7 +7,6 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	"AgentEarth-Stat/cron/consumers"
 	"AgentEarth-Stat/cron/internal/config"
@@ -30,11 +29,6 @@ func main() {
 
 	// 设置日志
 	logx.MustSetup(c.Log)
-
-	// 打印当前时间和时区，方便确认 cron 使用的时区
-	now := time.Now()
-	logx.Infof("Cron service start time: %s, location: %s",
-		now.Format("2006-01-02 15:04:05 -0700 MST"), now.Location())
 
 	ctx := context.Background()
 	svcCtx := svc.NewServiceContext(c)
