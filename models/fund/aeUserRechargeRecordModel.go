@@ -111,18 +111,38 @@ func (m *customAeUserRechargeRecordModel) QueryRechargeCandidatesForSettlement(c
 	return list, nil
 }
 
-// QueryFallbackRechargeRecord 兜底查询用户最近一条充值记录（不限过期、金额、正负），用于无有效候选时挂账，保证欠款有地方挂。
-// 按 pay_time DESC 取一条。无记录时返回 (nil, nil)。
+// QueryFallbackRechargeRecord 兜底查询用户最近一条“正向充值”记录，用于无有效候选时挂账，保证欠款有地方挂。
+// 优先选择 xlcredit_amount > 0 的记录（无论是否过期），按 pay_time DESC, id DESC 取一条；
+// 如用户从未有正向充值记录，仅存在负值扣减时，才退而求其次按“任意金额”取最近一条，避免消费记录完全找不到挂载点。
+// 无任何记录时返回 (nil, nil)。
 func (m *customAeUserRechargeRecordModel) QueryFallbackRechargeRecord(ctx context.Context, userId string) (*RechargeRecordRow, error) {
-	const query = `
+	// 1) 优先查最近一条正向充值（xlcredit_amount > 0）
+	const queryPositive = `
 		SELECT id, user_id, xlcredit_amount, pay_time, expire_time, related_recharge_id
 		FROM ae_user_recharge_record
-		WHERE user_id = $1
-		ORDER BY pay_time DESC
+		WHERE user_id = $1 AND xlcredit_amount > 0
+		ORDER BY pay_time DESC, id DESC
 		LIMIT 1
 	`
 	var rec RechargeRecordRow
-	if err := m.conn.QueryRowCtx(ctx, &rec, query, userId); err != nil {
+	err := m.conn.QueryRowCtx(ctx, &rec, queryPositive, userId)
+	if err == nil {
+		return &rec, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) && err != sqlx.ErrNotFound {
+		// 其他错误直接返回
+		return nil, err
+	}
+
+	// 2) 用户从未有正向充值，仅存在负值扣减等记录时，退而求其次按“任意金额”取最近一条，避免消费无处挂账
+	const queryAny = `
+		SELECT id, user_id, xlcredit_amount, pay_time, expire_time, related_recharge_id
+		FROM ae_user_recharge_record
+		WHERE user_id = $1
+		ORDER BY pay_time DESC, id DESC
+		LIMIT 1
+	`
+	if err := m.conn.QueryRowCtx(ctx, &rec, queryAny, userId); err != nil {
 		if errors.Is(err, sql.ErrNoRows) || err == sqlx.ErrNotFound {
 			return nil, nil
 		}

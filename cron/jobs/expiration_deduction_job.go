@@ -103,6 +103,9 @@ func (j *ExpirationDeductionJob) processSingleRecord(record fundmodel.ExpiredRec
 		if err != nil {
 			return err
 		}
+		// 仅当该批次当前仍有正余额时才做“过期回收”：插入一条负值过期扣减记录。
+		// balance <= 0 表示该批次已被完全用尽或已透支（例如 2.9 已把 100 消费挂到 50 的批次上），
+		// 到期时视为“剩余 0”，不再插入过期扣减记录，避免重复记账；透支金额由 OverdraftAmount 展示为 50。
 		if balance.LessThanOrEqual(decimal.Zero) {
 			return nil
 		}
