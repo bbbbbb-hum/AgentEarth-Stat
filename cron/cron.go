@@ -64,6 +64,17 @@ func main() {
 		// 立即执行一次
 		//job.Run()
 	}
+	// 注册用户余额定时任务
+	if c.Jobs.UserBalanceJob.Enable {
+		job := jobs.NewUserBalanceJob(ctx, svcCtx)
+		_, err := cronScheduler.AddFunc(c.Jobs.UserBalanceJob.Cron, func() {
+			job.Run()
+		})
+		if err != nil {
+			logx.Errorf("Failed to add UserBalanceJob: %v", err)
+		}
+		logx.Infof("UserBalanceJob registered with cron: %s", c.Jobs.UserBalanceJob.Cron)
+	}
 
 	// 启动调度器
 	cronScheduler.Start()
@@ -71,7 +82,7 @@ func main() {
 	// ========== 注册JetStream消费者 ==========
 	var activeConsumers []consumers.Consumer
 
-	// 注册请求日志消费者
+	// 注册请求日志消费者(先关闭掉这里的消费者，后续如果有需求在开启)
 	if c.Consumers.RequestLogsConsumer.Enable {
 		c.Consumers.RequestLogsConsumer.Stream = c.NameSpace + "_" + c.Consumers.RequestLogsConsumer.Stream
 		consumer := consumers.NewRequestLogsConsumer(ctx, svcCtx, c.Consumers.RequestLogsConsumer)

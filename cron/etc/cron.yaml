@@ -50,3 +50,6 @@ Jobs:
   AvgResponseTimeJob:
     Enable: true
     Cron: "0 30 * * * ?" # 每1小时第30分执行一次
+  UserBalanceJob:
+    Enable: true
+    Cron: "0 5 * * * ?" # 每小时的第5分钟执行一次

@@ -19,6 +19,10 @@ type Config struct {
 			Enable bool
 			Cron   string
 		}
+		UserBalanceJob struct {
+			Enable bool
+			Cron   string
+		}
 	}
 	Consumers ConsumersConfig
 }
