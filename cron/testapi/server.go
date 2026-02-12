@@ -20,7 +20,7 @@ type RunJobResponse struct {
 	Msg string `json:"msg,omitempty"`
 }
 
-// TODO: Start 启动测试 API 服务，阻塞调用；应在 goroutine 中调用。
+// TODO: 启动测试 API 服务，阻塞调用；应在 goroutine 中调用。
 func Start(c config.Config, svcCtx *svc.ServiceContext, ctx context.Context) {
 	if !c.TestAPI.Enable {
 		return
@@ -31,8 +31,9 @@ func Start(c config.Config, svcCtx *svc.ServiceContext, ctx context.Context) {
 	}
 	mux := http.NewServeMux()
 	// 两个独立接口，可分别测试，无需等待
-	mux.HandleFunc("/test/run-settlement", handleRunSettlement(svcCtx, ctx))
-	mux.HandleFunc("/test/run-expiration", handleRunExpiration(svcCtx, ctx))
+	//TODO: 生产环境安全考虑，暂时关闭以下测试接口；需要测试时手动恢复注释即可。
+	//mux.HandleFunc("/test/run-settlement", handleRunSettlement(svcCtx, ctx))
+	//mux.HandleFunc("/test/run-expiration", handleRunExpiration(svcCtx, ctx))
 	addr := fmt.Sprintf(":%d", port)
 	logx.Infof("[TestAPI] 监听 %s，仅用于测试，生产请关闭 TestAPI.Enable", addr)
 	if err := http.ListenAndServe(addr, mux); err != nil {
