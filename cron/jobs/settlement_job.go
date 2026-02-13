@@ -67,7 +67,7 @@ func (j *SettlementJob) processUserDailyConsumption(daily *fundmodel.DailyRecord
 	// consumeAmount 表示“消费总额”（固定不变）；amountToDeduct 表示“剩余待扣”（会逐步减少）
 	consumeAmount := decimal.NewFromFloat(daily.XlcreditConsume)
 	if consumeAmount.LessThanOrEqual(decimal.Zero) {
-		return 0, nil
+		return 0, nil //用户无消费/记录错误出现负数，返回nil不影响下一条消费继续执行
 	}
 	amountToDeduct := consumeAmount
 
@@ -168,7 +168,7 @@ func (j *SettlementJob) processUserDailyConsumption(daily *fundmodel.DailyRecord
 			candidates = append(candidates, *fallbackRec)
 		}
 
-		// TODO【仅用某条充值记录计算透支量有局限性】
+		// TODO【仅用某条充值记录计算透支量有局限性，改用全局余额】
 		// 代数和法：可先扫一遍看用户之前欠了多少钱，再在扣款时用新批次填补旧批次透支；当前实现依赖“最后一条死磕”与全局余额有效余额逻辑。
 
 		// B. 执行扣款
