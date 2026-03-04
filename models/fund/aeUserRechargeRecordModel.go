@@ -54,7 +54,7 @@ type ExpiredRechargeRecordRow struct {
 	ExpireTime     sql.NullTime `db:"expire_time"`
 }
 
-// ExpirationDeductionParams 插入过期扣减记录所需参数；ChargeType=4 表示过期扣减，ChargeSource=-2、Operator 如 "System_Auto"。
+// ExpirationDeductionParams 插入过期扣减记录所需参数；ChargeType=141 表示过期扣减，ChargeSource=5（非 cron_rule 业务逻辑，如过期扣减）、Operator 如 "System_Auto"。
 type ExpirationDeductionParams struct {
 	UserId            string
 	NegativeAmount    decimal.Decimal
@@ -172,7 +172,7 @@ func (m *customAeUserRechargeRecordModel) QueryExpiredRechargeRecords(ctx contex
 				WHERE
 					d.related_recharge_id = r.id
 					AND d.xlcredit_amount < 0
-					AND d.charge_type = 4
+					AND d.charge_type = 141
 			)
 		ORDER BY r.id ASC
 		LIMIT $2
@@ -184,9 +184,9 @@ func (m *customAeUserRechargeRecordModel) QueryExpiredRechargeRecords(ctx contex
 	return list, nil
 }
 
-// CountExpirationDeductionExists 幂等检查：该充值批次是否已有过期扣减记录（ae_user_recharge_record 中 related_recharge_id 指向该批次且 xlcredit_amount < 0 且 charge_type = 4）。
+// CountExpirationDeductionExists 幂等检查：该充值批次是否已有过期扣减记录（ae_user_recharge_record 中 related_recharge_id 指向该批次且 xlcredit_amount < 0 且 charge_type = 141）。
 func (m *customAeUserRechargeRecordModel) CountExpirationDeductionExists(ctx context.Context, rechargeId int64) (int64, error) {
-	const query = `SELECT COUNT(*) FROM ae_user_recharge_record WHERE related_recharge_id = $1 AND xlcredit_amount < 0 AND charge_type = 4`
+	const query = `SELECT COUNT(*) FROM ae_user_recharge_record WHERE related_recharge_id = $1 AND xlcredit_amount < 0 AND charge_type = 141`
 	var n int64
 	if err := m.conn.QueryRowCtx(ctx, &n, query, rechargeId); err != nil {
 		return 0, err
@@ -194,7 +194,7 @@ func (m *customAeUserRechargeRecordModel) CountExpirationDeductionExists(ctx con
 	return n, nil
 }
 
-// InsertExpirationDeductionRecord 插入一条过期扣减记录到 ae_user_recharge_record（xlcredit_amount 为负值，charge_type=4，remark 如“充值记录 N 到期自动清理”）。
+// InsertExpirationDeductionRecord 插入一条过期扣减记录到 ae_user_recharge_record（xlcredit_amount 为负值，charge_type=141，remark 如“充值记录 N 到期自动清理”）。
 func (m *customAeUserRechargeRecordModel) InsertExpirationDeductionRecord(ctx context.Context, p ExpirationDeductionParams) error {
 	const query = `
 		INSERT INTO ae_user_recharge_record (

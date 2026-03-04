@@ -39,16 +39,16 @@ type (
 	AeUserRechargeRecord struct {
 		Id                int64          `db:"id"`              //  用户充值记录表id
 		UserId            string         `db:"user_id"`         // 用户uuid
-		XlcreditAmount    float64        `db:"xlcredit_amount"` // 充值金额
-		PayTime           time.Time      `db:"pay_time"`        // 充值时间（支付时间）
+		XlcreditAmount    float64        `db:"xlcredit_amount"` // 充值金额（正数为充值，负数为扣减）
+		PayTime           time.Time      `db:"pay_time"`        // 资金变动时间（支付/扣减时间）
 		CreateTime        time.Time      `db:"create_time"`     // 创建时间
 		UpdateTime        time.Time      `db:"update_time"`     // 更新时间
-		ChargeSource      int64          `db:"charge_source"`   // 充值来源：1 ：系统赠送；2：支付宝；3：微信；4：银行卡-1：系统扣减
-		ChargeType        int64          `db:"charge_type"`     // 充值类型：1 用户常规充值；2 系统故障补偿；3 活动赠送；4 过期扣减；5 管理员扣减
+		ChargeSource      int64          `db:"charge_source"`   // 额度操作变化的触发主体：1 用户自主操作；2 运营手工单个操作；3 运营手工批量操作；4 自动 Rule 操作；5 非 cron_rule 业务逻辑（如过期扣减）；-1 其他/系统
+		ChargeType        int64          `db:"charge_type"`     // 充值类型：101 用户常规充值；141 过期扣减；201 系统故障补偿；301 活动赠送；341 管理员/违规扣减
 		Remark            sql.NullString `db:"remark"`          // 管理员充值/扣减后台备注
-		Operator          sql.NullString `db:"operator"`
-		ExpireTime        sql.NullTime   `db:"expire_time"`         // 过期时间（空表示永久有效）
-		RelatedRechargeId sql.NullInt64  `db:"related_recharge_id"` // 负值扣减记录关联的正值记录
+		Operator          sql.NullString `db:"operator"`        // 操作人（管理员用户名或系统标识）
+		ExpireTime        sql.NullTime   `db:"expire_time"`     // 过期时间（空或 9999-12-31 表示永久有效）
+		RelatedRechargeId sql.NullInt64  `db:"related_recharge_id"` // 负值扣减记录关联的正向充值记录 id
 	}
 )
 
