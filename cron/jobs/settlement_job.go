@@ -29,37 +29,86 @@ func NewSettlementJob(ctx context.Context, svcCtx *svc.ServiceContext) *Settleme
 }
 
 func (j *SettlementJob) Run() {
-	// 处理昨日消费
+	// 处理昨日消费：先根据调用日志生成日消费统计，再做日结核销
 	targetDate := time.Now().AddDate(0, 0, -1)
+	j.Infof("[SettlementJob] 开始处理日期 %s 的日消费统计", targetDate.Format("2006-01-02"))
+
+	// A. 先根据 ae_mcp_services_request_logs 生成/刷新 ae_user_consumption_record_daily
+	if err := j.aggregateDailyConsumption(targetDate); err != nil {
+		j.Errorf("[SettlementJob] 生成日消费统计失败: %v", err)
+		return
+	}
+
+	// B. 日消费统计成功后，开始执行原有的日结核销逻辑
 	j.Infof("[SettlementJob] 开始核销日期 %s 的消费记录", targetDate.Format("2006-01-02"))
 	if err := j.settleAllUsersConsumption(targetDate); err != nil {
 		j.Errorf("[SettlementJob] 核销失败: %v", err)
 	}
 }
 
-func (j *SettlementJob) settleAllUsersConsumption(targetDate time.Time) error {
-	// 查询昨日所有的消费记录
-	dateStr := targetDate.Format("2006-01-02")
-	dailyRecords, err := j.svcCtx.UserConsumptionRecordDailyModel.QueryDailyConsumptionByDay(j.ctx, dateStr)
+// aggregateDailyConsumption 根据调用日志生成指定日期的用户日消费统计
+func (j *SettlementJob) aggregateDailyConsumption(targetDate time.Time) error {
+	// 统计窗口：[targetDate 00:00:00, targetDate+1 00:00:00)，使用 request_time 作为消费发生时间
+	j.Infof("[SettlementJob] 开始统计日期 %s 的用户日消费", targetDate.Format("2006-01-02"))
+
+	// 1. 从调用日志按 user_id 聚合昨日消费
+	consumes, err := j.svcCtx.McpServiceRequestLogsModel.AggregateUserDailyConsume(j.ctx, targetDate)
 	if err != nil {
-		j.Errorf("[SettlementJob] 查询日消费记录失败: %v", err)
 		return err
 	}
-	if len(dailyRecords) == 0 {
+	if len(consumes) == 0 {
+		j.Infof("[SettlementJob] 日期 %s 调用日志中未统计到任何消费记录", targetDate.Format("2006-01-02"))
+		return nil
+	}
+
+	// 2. 将聚合结果写入/更新到用户日消费统计表（幂等可重跑）
+	if err := j.svcCtx.UserConsumptionRecordDailyModel.UpsertDailyConsume(j.ctx, targetDate, consumes); err != nil {
+		return err
+	}
+
+	j.Infof("[SettlementJob] 日期 %s 日消费统计已生成，共 %d 个用户", targetDate.Format("2006-01-02"), len(consumes))
+	return nil
+}
+
+//算法逻辑流程图见
+func (j *SettlementJob) settleAllUsersConsumption(targetDate time.Time) error {
+	// 查询昨日所有的消费记录（按 id 游标分页）
+	dateStr := targetDate.Format("2006-01-02")
+	const pageSize int64 = 1000
+	var (
+		lastId         int64 = 0
+		totalDaily           = 0
+		totalNewAllocs int64 = 0 // 记录最终插入了多少条核销记录
+	)
+
+	for {
+		dailyRecords, err := j.svcCtx.UserConsumptionRecordDailyModel.QueryDailyConsumptionByDay(j.ctx, dateStr, lastId, pageSize)
+		if err != nil {
+			j.Errorf("[SettlementJob] 查询日消费记录失败: %v", err)
+			return err
+		}
+		if len(dailyRecords) == 0 {
+			break
+		}
+
+		for i := range dailyRecords {
+			totalDaily++
+			lastId = dailyRecords[i].Id
+
+			n, procErr := j.processUserDailyConsumption(&dailyRecords[i]) // 遍历每条消费记录去做核销
+			if procErr != nil {
+				j.Errorf("[SettlementJob] 用户 %s 核销失败: %v", dailyRecords[i].UserId, procErr)
+				continue
+			}
+			totalNewAllocs += n
+		}
+	}
+
+	if totalDaily == 0 {
 		j.Infof("[SettlementJob] 日期 %s 未发现任何消费记录", dateStr)
 		return nil
 	}
-	j.Infof("[SettlementJob] 共 %d 条用户日消费待核销", len(dailyRecords))
-	var totalNewAllocs int64 // 记录最终插入了多少条核销记录
-	for i := range dailyRecords {
-		n, procErr := j.processUserDailyConsumption(&dailyRecords[i]) // 遍历每条消费记录去做核销
-		if procErr != nil {
-			j.Errorf("[SettlementJob] 用户 %s 核销失败: %v", dailyRecords[i].UserId, procErr)
-			continue
-		}
-		totalNewAllocs += n
-	}
-	j.Infof("[SettlementJob] 日期 %s 核销完成，实际新增 %d 条核销", dateStr, totalNewAllocs)
+	j.Infof("[SettlementJob] 日期 %s 核销完成，共处理 %d 条日消费，实际新增 %d 条核销", dateStr, totalDaily, totalNewAllocs)
 	return nil
 }
 

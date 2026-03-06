@@ -69,11 +69,6 @@ func (j *ExpirationDeductionJob) processExpiration() error {
 				totalDeducted++
 			}
 		}
-
-		// 若本批已不足一整页，则说明已处理完所有剩余数据
-		if int64(len(expiredRecords)) < pageSize {
-			break
-		}
 	}
 
 	if totalChecked == 0 {

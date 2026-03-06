@@ -38,5 +38,5 @@ Jobs:
     Enable: true
     Cron: "0 0 1 * * ?" # 每天01:00 日结核销
   ExpirationDeductionJob:
-      Enable: true
-      Cron: "0 0 2 * * ?" # 每天02:00 过期扣减
+    Enable: true
+    Cron: "0 0 2 * * ?" # 每天02:00 过期扣减

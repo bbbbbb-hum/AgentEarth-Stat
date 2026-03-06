@@ -3,7 +3,7 @@ package jobs
 import (
 	"AgentEarth-Stat/cron/internal/redis"
 	"AgentEarth-Stat/cron/internal/svc"
-	"AgentEarth-Stat/models/users"
+	"AgentEarth-Stat/models/fund"
 	"context"
 	"errors"
 	"time"
@@ -70,7 +70,7 @@ func (j *UserBalanceJob) Run() {
 				initialBalance = lastDayBalance.Balance
 			}
 			// 创建当天用户余额记录
-			userBalance = &users.AeUserBalanceStatisticDaily{
+			userBalance = &fund.AeUserBalanceStatisticDaily{
 				UserId:  userId,
 				Day:     day,
 				Balance: initialBalance,

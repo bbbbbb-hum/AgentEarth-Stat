@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/zeromicro/go-zero/core/stores/sqlx"
 )
@@ -20,10 +21,19 @@ type (
 		GetList(ctx context.Context, lp models.ListConditions, getList bool) (list []*AeMcpServicesRequestLogs, total int64, err error)
 		InsertBatch(ctx context.Context, list []*AeMcpServicesRequestLogs) error
 		GetAvgResponseTime(ctx context.Context, serverId string) (responseTime float64, err error)
+		// AggregateUserDailyConsume 按 user_id 维度聚合某一天的总消费金额（xlcredit_amount），用于生成日消费统计。
+		// day 表示统计的自然日，统计窗口为 [day 00:00:00, day+1 00:00:00)，仅统计 status=1 且 xlcredit_amount>0 的成功消费。
+		AggregateUserDailyConsume(ctx context.Context, day time.Time) ([]UserDailyConsume, error)
 	}
 
 	customAeMcpServicesRequestLogsModel struct {
 		*defaultAeMcpServicesRequestLogsModel
+	}
+
+	// UserDailyConsume 表示某个用户在某一天的总消费金额（从调用日志聚合而来）。
+	UserDailyConsume struct {
+		UserId string `db:"user_id"`
+		Amount string `db:"total_consume"` // numeric 聚合结果以字符串形式承接，方便上层用 decimal 计算
 	}
 )
 
@@ -124,4 +134,31 @@ func (m *customAeMcpServicesRequestLogsModel) InsertBatch(ctx context.Context, l
 	}
 
 	return nil
+}
+
+// AggregateUserDailyConsume 按 user_id 聚合某一天的总消费金额，用于生成日消费统计。
+// 统计窗口为 [day 00:00:00, day+1 00:00:00)，仅统计 status=1 且 xlcredit_amount>0 的成功消费。
+func (m *customAeMcpServicesRequestLogsModel) AggregateUserDailyConsume(ctx context.Context, day time.Time) ([]UserDailyConsume, error) {
+	// 归一化到当天 00:00:00，保持与数据库时区一致（这里假定 day 已是正确时区）
+	start := time.Date(day.Year(), day.Month(), day.Day(), 0, 0, 0, 0, day.Location())
+	end := start.AddDate(0, 0, 1)
+
+	const query = `
+		SELECT
+			user_id,
+			COALESCE(SUM(xlcredit_amount)::text, '0') AS total_consume
+		FROM ae_mcp_services_request_logs
+		WHERE
+			request_time >= $1
+			AND request_time < $2
+			AND status = 1
+			AND xlcredit_amount > 0
+		GROUP BY user_id
+	`
+
+	var list []UserDailyConsume
+	if err := m.conn.QueryRowsCtx(ctx, &list, query, start, end); err != nil {
+		return nil, err
+	}
+	return list, nil
 }
