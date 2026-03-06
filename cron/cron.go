@@ -4,15 +4,14 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 
-	"AgentEarth-Stat/cron/consumers"
 	"AgentEarth-Stat/cron/internal/config"
 	"AgentEarth-Stat/cron/internal/svc"
 	"AgentEarth-Stat/cron/jobs"
-	"AgentEarth-Stat/cron/testapi" //TODO: TestAPI 仅用于本地/Apifox 触发定时任务，生产请关闭
 
 	"github.com/robfig/cron/v3"
 	"github.com/zeromicro/go-zero/core/conf"
@@ -32,6 +31,18 @@ func main() {
 
 	ctx := context.Background()
 	svcCtx := svc.NewServiceContext(c)
+
+	// 启动 HTTP 服务
+	go func() {
+		handlers := &Handlers{svcCtx: svcCtx}
+		addr := c.Host + ":" + fmt.Sprintf("%d", c.Port)
+		http.HandleFunc("/health", handlers.healthHandler)
+		http.HandleFunc("/ready", handlers.readyHandler)
+		logx.Infof("HTTP server started on :%s", addr)
+		if err := http.ListenAndServe(addr, nil); err != nil {
+			logx.Errorf("Failed to start HTTP server: %v", err)
+		}
+	}()
 
 	// 创建 cron 调度器
 	cronScheduler := cron.New(cron.WithSeconds())
@@ -76,24 +87,20 @@ func main() {
 			logx.Infof("ExpirationDeductionJob registered with cron: %s", c.Jobs.ExpirationDeductionJob.Cron)
 		}
 	}
+	// 注册用户余额定时任务
+	if c.Jobs.UserBalanceJob.Enable {
+		job := jobs.NewUserBalanceJob(ctx, svcCtx)
+		_, err := cronScheduler.AddFunc(c.Jobs.UserBalanceJob.Cron, func() {
+			job.Run()
+		})
+		if err != nil {
+			logx.Errorf("Failed to add UserBalanceJob: %v", err)
+		}
+		logx.Infof("UserBalanceJob registered with cron: %s", c.Jobs.UserBalanceJob.Cron)
+	}
 
 	// 启动调度器
 	cronScheduler.Start()
-
-	// ========== 注册JetStream消费者 ==========
-	var activeConsumers []consumers.Consumer
-
-	// 注册请求日志消费者
-	if c.Consumers.RequestLogsConsumer.Enable {
-		consumer := consumers.NewRequestLogsConsumer(ctx, svcCtx, c.Consumers.RequestLogsConsumer)
-		if err := consumer.Start(); err != nil {
-			logx.Errorf("Failed to start RequestLogsConsumer: %v", err)
-		} else {
-			activeConsumers = append(activeConsumers, consumer)
-			logx.Infof("RequestLogsConsumer started, stream: %s, subject: %s",
-				c.Consumers.RequestLogsConsumer.Stream, c.Consumers.RequestLogsConsumer.Subject)
-		}
-	}
 
 	// 可以继续添加更多消费者...
 	// if c.Consumers.AnotherConsumer.Enable {
@@ -102,11 +109,6 @@ func main() {
 	// }
 
 	fmt.Println("Cron service started...")
-
-	//TODO: 测试 API：用于 Apifox 触发定时任务（仅当开启时）
-	if c.TestAPI.Enable {
-		go testapi.Start(c, svcCtx, ctx)
-	}
 
 	// 优雅关闭
 	quit := make(chan os.Signal, 1)
@@ -118,15 +120,27 @@ func main() {
 	// 停止定时任务
 	cronScheduler.Stop()
 
-	// 停止所有消费者
-	for _, consumer := range activeConsumers {
-		if err := consumer.Stop(); err != nil {
-			logx.Errorf("Failed to stop consumer: %v", err)
-		}
-	}
-
-	// 关闭服务上下文（包括NATS连接）
-	svcCtx.Close()
-
 	logx.Info("Cron service stopped")
+}
+
+type Handlers struct {
+	svcCtx *svc.ServiceContext
+}
+
+func (h *Handlers) healthHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprintf(w, `{"status": "healthy"}`)
+}
+
+func (h *Handlers) readyHandler(w http.ResponseWriter, r *http.Request) {
+	if h.svcCtx.IsReady() {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintf(w, `{"status": "ready"}`)
+	} else {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		fmt.Fprintf(w, `{"status": "not ready"}`)
+	}
 }
