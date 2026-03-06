@@ -9,7 +9,6 @@ import (
 	"os/signal"
 	"syscall"
 
-	"AgentEarth-Stat/cron/consumers"
 	"AgentEarth-Stat/cron/internal/config"
 	"AgentEarth-Stat/cron/internal/svc"
 	"AgentEarth-Stat/cron/jobs"
@@ -79,22 +78,6 @@ func main() {
 	// 启动调度器
 	cronScheduler.Start()
 
-	// ========== 注册JetStream消费者 ==========
-	var activeConsumers []consumers.Consumer
-
-	// 注册请求日志消费者(先关闭掉这里的消费者，后续如果有需求在开启)
-	if c.Consumers.RequestLogsConsumer.Enable {
-		c.Consumers.RequestLogsConsumer.Stream = c.NameSpace + "_" + c.Consumers.RequestLogsConsumer.Stream
-		consumer := consumers.NewRequestLogsConsumer(ctx, svcCtx, c.Consumers.RequestLogsConsumer)
-		if err := consumer.Start(); err != nil {
-			logx.Errorf("Failed to start RequestLogsConsumer: %v", err)
-		} else {
-			activeConsumers = append(activeConsumers, consumer)
-			logx.Infof("RequestLogsConsumer started, stream: %s, subject: %s",
-				c.Consumers.RequestLogsConsumer.Stream, c.Consumers.RequestLogsConsumer.Subject)
-		}
-	}
-
 	// 可以继续添加更多消费者...
 	// if c.Consumers.AnotherConsumer.Enable {
 	//     consumer := consumers.NewAnotherConsumer(ctx, svcCtx, c.Consumers.AnotherConsumer)
@@ -112,16 +95,6 @@ func main() {
 
 	// 停止定时任务
 	cronScheduler.Stop()
-
-	// 停止所有消费者
-	for _, consumer := range activeConsumers {
-		if err := consumer.Stop(); err != nil {
-			logx.Errorf("Failed to stop consumer: %v", err)
-		}
-	}
-
-	// 关闭服务上下文（包括NATS连接）
-	svcCtx.Close()
 
 	logx.Info("Cron service stopped")
 }
