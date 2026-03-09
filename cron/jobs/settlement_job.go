@@ -35,33 +35,16 @@ func (j *SettlementJob) Run() {
 	targetDate := time.Now().AddDate(0, 0, -1)
 	j.Infof("[SettlementJob] 开始处理日期 %s 的日消费统计", targetDate.Format("2006-01-02"))
 
-	// A. 先根据 ae_mcp_services_request_logs 生成/刷新 ae_user_consumption_record_daily（失败自动重试）
-	const maxRetries = 2
-	var err error
-	for attempt := 1; attempt <= maxRetries; attempt++ {
-		err = j.aggregateDailyConsumption(targetDate)
-		if err == nil {
-			break
-		}
-		j.Errorf("[SettlementJob] 生成日消费统计失败(第 %d 次): %v", attempt, err)
-	}
-	if err != nil {
-		j.Errorf("[SettlementJob] 严重错误：生成日消费统计连续 %d 次失败，终止本次日结任务: %v", maxRetries, err)
+	// A. 先根据 ae_mcp_services_request_logs 生成/刷新 ae_user_consumption_record_daily（不再重试，失败仅记录日志并终止本次任务）
+	if err := j.aggregateDailyConsumption(targetDate); err != nil {
+		j.Errorf("[SettlementJob] 生成日消费统计失败: %v", err)
 		return
 	}
 
 	// B. 日消费统计成功后，开始执行原有的日结核销逻辑
 	j.Infof("[SettlementJob] 开始核销日期 %s 的消费记录", targetDate.Format("2006-01-02"))
-	err = nil
-	for attempt := 1; attempt <= maxRetries; attempt++ {
-		err = j.settleAllUsersConsumption(targetDate)
-		if err == nil {
-			break
-		}
-		j.Errorf("[SettlementJob] 核销失败(第 %d 次): %v", attempt, err)
-	}
-	if err != nil {
-		j.Errorf("[SettlementJob] 严重错误：日结核销连续 %d 次失败，请尽快排查: %v", maxRetries, err)
+	if err := j.settleAllUsersConsumption(targetDate); err != nil {
+		j.Errorf("[SettlementJob] 日结核销失败: %v", err)
 	}
 }
 

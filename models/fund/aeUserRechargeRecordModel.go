@@ -220,7 +220,9 @@ func (m *customAeUserRechargeRecordModel) CalculateRealTimeBalance(ctx context.C
 	return currentBalance, nil
 }
 
-// BatchInsertExpirationDeductionRecords 批量插入过期扣减记录；依赖表上 (related_recharge_id) 部分唯一索引，冲突时 ON CONFLICT DO NOTHING 跳过，保证幂等。
+// BatchInsertExpirationDeductionRecords 批量插入过期扣减记录。
+// 幂等性主要由上游的 QueryExpiredRechargeRecords 通过 NOT EXISTS 过滤已存在的过期扣减记录来保障，
+// 这里不再依赖数据库层面的部分唯一索引或 ON CONFLICT 子句。
 func (m *customAeUserRechargeRecordModel) BatchInsertExpirationDeductionRecords(ctx context.Context, list []ExpirationDeductionParams) error {
 	if len(list) == 0 {
 		return nil
@@ -257,7 +259,6 @@ func (m *customAeUserRechargeRecordModel) BatchInsertExpirationDeductionRecords(
 			p.Operator,
 		)
 	}
-	query += ` ON CONFLICT (related_recharge_id) DO NOTHING`
 
 	_, err := m.conn.ExecCtx(ctx, query, args...)
 	return err
