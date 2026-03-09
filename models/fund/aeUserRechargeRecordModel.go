@@ -19,15 +19,15 @@ var _ AeUserRechargeRecordModel = (*customAeUserRechargeRecordModel)(nil)
 		AeUserRechargeRecordModel interface {
 			aeUserRechargeRecordModel
 			WithSession(session sqlx.Session) AeUserRechargeRecordModel
-			// 统计侧：资金增量、FEFO 候选、兜底、过期充值、幂等检查、过期扣减插入、实时余额
+			// 统计侧：资金增量、FEFO 候选、兜底、过期充值、过期扣减插入、实时余额
 			QueryBalanceDeltaSince(ctx context.Context, userId string, from time.Time) (string, error)
 			QueryRechargeCandidatesForSettlement(ctx context.Context, userId string, dayEnd time.Time) ([]RechargeRecordRow, error)
 			QueryFallbackRechargeRecord(ctx context.Context, userId string) (*RechargeRecordRow, error)
 			// QueryExpiredRechargeRecords 分页查询已过期且金额为正、且未做过过期扣减的充值记录，按 id 递增做 keyset 分页。
 			// 参数 lastId 为上一页最后一条记录的 id（第一页传 0），limit 为每页条数。
 			QueryExpiredRechargeRecords(ctx context.Context, lastId, limit int64) ([]ExpiredRechargeRecordRow, error)
-			CountExpirationDeductionExists(ctx context.Context, rechargeId int64) (int64, error)
 			InsertExpirationDeductionRecord(ctx context.Context, p ExpirationDeductionParams) error
+			BatchInsertExpirationDeductionRecords(ctx context.Context, list []ExpirationDeductionParams) error
 			CalculateRealTimeBalance(ctx context.Context, recordID int64, initialAmount decimal.Decimal) (decimal.Decimal, error)
 		}
 
@@ -184,16 +184,6 @@ func (m *customAeUserRechargeRecordModel) QueryExpiredRechargeRecords(ctx contex
 	return list, nil
 }
 
-// CountExpirationDeductionExists 幂等检查：该充值批次是否已有过期扣减记录（ae_user_recharge_record 中 related_recharge_id 指向该批次且 xlcredit_amount < 0 且 charge_type = 141）。
-func (m *customAeUserRechargeRecordModel) CountExpirationDeductionExists(ctx context.Context, rechargeId int64) (int64, error) {
-	const query = `SELECT COUNT(*) FROM ae_user_recharge_record WHERE related_recharge_id = $1 AND xlcredit_amount < 0 AND charge_type = 141`
-	var n int64
-	if err := m.conn.QueryRowCtx(ctx, &n, query, rechargeId); err != nil {
-		return 0, err
-	}
-	return n, nil
-}
-
 // InsertExpirationDeductionRecord 插入一条过期扣减记录到 ae_user_recharge_record（xlcredit_amount 为负值，charge_type=141，remark 如“充值记录 N 到期自动清理”）。
 func (m *customAeUserRechargeRecordModel) InsertExpirationDeductionRecord(ctx context.Context, p ExpirationDeductionParams) error {
 	const query = `
@@ -228,5 +218,48 @@ func (m *customAeUserRechargeRecordModel) CalculateRealTimeBalance(ctx context.C
 		return decimal.Zero, fmt.Errorf("解析充值记录 %d 的余额结果失败: %w", recordID, err)
 	}
 	return currentBalance, nil
+}
+
+// BatchInsertExpirationDeductionRecords 批量插入过期扣减记录；依赖表上 (related_recharge_id) 部分唯一索引，冲突时 ON CONFLICT DO NOTHING 跳过，保证幂等。
+func (m *customAeUserRechargeRecordModel) BatchInsertExpirationDeductionRecords(ctx context.Context, list []ExpirationDeductionParams) error {
+	if len(list) == 0 {
+		return nil
+	}
+
+	const baseSQL = `
+		INSERT INTO ae_user_recharge_record (
+			user_id, xlcredit_amount, pay_time, create_time, update_time,
+			charge_source, charge_type, remark, related_recharge_id, operator
+		) VALUES `
+
+	const colsPerRow = 10
+	args := make([]interface{}, 0, len(list)*colsPerRow)
+
+	query := baseSQL
+	for i, p := range list {
+		if i > 0 {
+			query += ","
+		}
+		base := i*colsPerRow + 1
+		query += fmt.Sprintf("($%d,$%d,$%d,$%d,$%d,$%d,$%d,$%d,$%d,$%d)",
+			base, base+1, base+2, base+3, base+4, base+5, base+6, base+7, base+8, base+9)
+
+		args = append(args,
+			p.UserId,
+			p.NegativeAmount,
+			p.Now,
+			p.Now,
+			p.Now,
+			p.ChargeSource,
+			p.ChargeType,
+			p.Remark,
+			p.RelatedRechargeID,
+			p.Operator,
+		)
+	}
+	query += ` ON CONFLICT (related_recharge_id) DO NOTHING`
+
+	_, err := m.conn.ExecCtx(ctx, query, args...)
+	return err
 }
 

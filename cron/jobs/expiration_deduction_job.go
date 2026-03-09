@@ -5,9 +5,11 @@ import (
 	"AgentEarth-Stat/cron/internal/svc"
 	fundmodel "AgentEarth-Stat/models/fund"
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
+	"github.com/lib/pq"
 	"github.com/shopspring/decimal"
 	"github.com/zeromicro/go-zero/core/logx"
 	"github.com/zeromicro/go-zero/core/stores/sqlx"
@@ -55,19 +57,91 @@ func (j *ExpirationDeductionJob) processExpiration() error {
 		}
 
 		j.Infof("[ExpirationDeductionJob] 本批次待检查过期记录数=%d, lastId=%d", len(expiredRecords), lastId)
+		// 收集本页需要做过期扣减的记录，后面一次性批量插入；失败时降级为逐条插入
+		type pendingItem struct {
+			record fundmodel.ExpiredRechargeRecordRow
+			params fundmodel.ExpirationDeductionParams
+		}
+		var pending []pendingItem
 
 		for _, record := range expiredRecords {
 			totalChecked++
 			lastId = record.Id
 
-			deducted, procErr := j.processSingleRecord(record)
-			if procErr != nil {
-				j.Errorf("[ExpirationDeductionJob] 处理批次 %d 失败: %v", record.Id, procErr)
+			initialAmount := decimal.NewFromFloat(record.XlcreditAmount)
+			balance, err := fund.CalculateRealTimeBalance(j.ctx, j.svcCtx.UserRechargeRecordModel, record.Id, initialAmount)
+			if err != nil {
+				j.Errorf("[ExpirationDeductionJob] 计算批次 %d 余额失败: %v", record.Id, err)
 				continue
 			}
-			if deducted {
-				totalDeducted++
+			if balance.LessThanOrEqual(decimal.Zero) {
+				continue
 			}
+
+			now := time.Now()
+			remark := fmt.Sprintf("充值记录 %d 到期自动清理", record.Id)
+			pending = append(pending, pendingItem{
+				record: record,
+				params: fundmodel.ExpirationDeductionParams{
+					UserId:            record.UserId,
+					NegativeAmount:    balance.Neg(),
+					Now:               now,
+					ChargeSource:      5,
+					ChargeType:        141,
+					Remark:            remark,
+					RelatedRechargeID: record.Id,
+					Operator:          "System_Auto",
+				},
+			})
+		}
+
+		if len(pending) == 0 {
+			continue
+		}
+
+		// 批量插入本页需要扣减的记录；失败时自动重试 + 降级为逐条
+		const maxBatchRetries = 2
+		var batchErr error
+		for attempt := 1; attempt <= maxBatchRetries; attempt++ {
+			batchErr = j.svcCtx.DB.TransactCtx(j.ctx, func(ctx context.Context, session sqlx.Session) error {
+				txModel := j.svcCtx.UserRechargeRecordModel.WithSession(session)
+				params := make([]fundmodel.ExpirationDeductionParams, 0, len(pending))
+				for _, item := range pending {
+					params = append(params, item.params)
+				}
+				return txModel.BatchInsertExpirationDeductionRecords(ctx, params)
+			})
+			if batchErr == nil {
+				break
+			}
+			j.Errorf("[ExpirationDeductionJob] 批量插入过期扣减记录失败(第 %d 次): %v", attempt, batchErr)
+		}
+
+		if batchErr != nil {
+			// 多次重试仍失败，降级为逐条插入，避免整页丢失
+			j.Errorf("[ExpirationDeductionJob] 批量插入多次失败，开始逐条重试当前批次")
+			for _, item := range pending {
+				deducted, procErr := j.processSingleRecord(item.record)
+				if procErr != nil {
+					j.Errorf("[ExpirationDeductionJob] 逐条重试批次 %d 失败: %v", item.record.Id, procErr)
+					continue
+				}
+				if deducted {
+					totalDeducted++
+				}
+			}
+			continue
+		}
+
+		// 批量成功，按条记日志，语义与原先逐条版本一致
+		for _, item := range pending {
+			totalDeducted++
+			expireStr := "永久有效"
+			if item.record.ExpireTime.Valid {
+				expireStr = item.record.ExpireTime.Time.Format(time.RFC3339)
+			}
+			j.Infof("[ExpirationDeductionJob] 核销详情: 用户=%s, 过期扣减金额=%s, 充值批次ID=%d, 批次过期时间=%s, 操作时间=%s, 备注=%s",
+				item.record.UserId, item.params.NegativeAmount.Abs().String(), item.record.Id, expireStr, item.params.Now.Format(time.RFC3339), item.params.Remark)
 		}
 	}
 
@@ -85,14 +159,6 @@ func (j *ExpirationDeductionJob) processSingleRecord(record fundmodel.ExpiredRec
 	err := j.svcCtx.DB.TransactCtx(j.ctx, func(ctx context.Context, session sqlx.Session) error {
 		txRechargeModel := j.svcCtx.UserRechargeRecordModel.WithSession(session)
 
-		// 幂等检查：若已存在该批次的过期扣减记录，则跳过
-		existsCount, err := txRechargeModel.CountExpirationDeductionExists(ctx, record.Id)
-		if err != nil {
-			return fmt.Errorf("幂等检查查询失败: %w", err)
-		}
-		if existsCount > 0 {
-			return nil
-		}
 		initialAmount := decimal.NewFromFloat(record.XlcreditAmount)
 		balance, err := fund.CalculateRealTimeBalance(ctx, txRechargeModel, record.Id, initialAmount)
 		if err != nil {
@@ -118,6 +184,9 @@ func (j *ExpirationDeductionJob) processSingleRecord(record fundmodel.ExpiredRec
 			Operator:          "System_Auto",
 		})
 		if err != nil {
+			if isUniqueViolation(err) {
+				return nil
+			}
 			return err
 		}
 		deducted = true
@@ -130,4 +199,13 @@ func (j *ExpirationDeductionJob) processSingleRecord(record fundmodel.ExpiredRec
 		return nil
 	})
 	return deducted, err
+}
+
+// isUniqueViolation 判断是否为 PostgreSQL 唯一约束冲突（23505），用于过期扣减插入时幂等跳过。
+func isUniqueViolation(err error) bool {
+	var e *pq.Error
+	if errors.As(err, &e) {
+		return e.Code == "23505"
+	}
+	return false
 }
