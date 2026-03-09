@@ -28,6 +28,8 @@ func NewSettlementJob(ctx context.Context, svcCtx *svc.ServiceContext) *Settleme
 	}
 }
 
+//资金核销流程图见：https://kcnh6cevaeaq.feishu.cn/wiki/CriGwqkejioBSNk7QRccoMjXnHd
+
 func (j *SettlementJob) Run() {
 	// 处理昨日消费：先根据调用日志生成日消费统计，再做日结核销
 	targetDate := time.Now().AddDate(0, 0, -1)

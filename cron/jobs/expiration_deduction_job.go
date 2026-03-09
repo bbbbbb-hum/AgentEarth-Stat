@@ -37,6 +37,7 @@ func (j *ExpirationDeductionJob) Run() {
 	}
 }
 
+// 过期扣减算法逻辑流程图见：https://kcnh6cevaeaq.feishu.cn/wiki/CriGwqkejioBSNk7QRccoMjXnHd
 func (j *ExpirationDeductionJob) processExpiration() error {
 	const pageSize int64 = 1000
 
