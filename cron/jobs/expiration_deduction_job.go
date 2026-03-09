@@ -99,18 +99,15 @@ func (j *ExpirationDeductionJob) processExpiration() error {
 			continue
 		}
 
-		// 批量插入本页需要扣减的记录；失败时自动重试 + 降级为逐条
+		// 批量插入本页需要扣减的记录（单条 INSERT 多行，本身原子；失败时重试 + 降级为逐条）
+		params := make([]fundmodel.ExpirationDeductionParams, 0, len(pending))
+		for _, item := range pending {
+			params = append(params, item.params)
+		}
 		const maxBatchRetries = 2
 		var batchErr error
 		for attempt := 1; attempt <= maxBatchRetries; attempt++ {
-			batchErr = j.svcCtx.DB.TransactCtx(j.ctx, func(ctx context.Context, session sqlx.Session) error {
-				txModel := j.svcCtx.UserRechargeRecordModel.WithSession(session)
-				params := make([]fundmodel.ExpirationDeductionParams, 0, len(pending))
-				for _, item := range pending {
-					params = append(params, item.params)
-				}
-				return txModel.BatchInsertExpirationDeductionRecords(ctx, params)
-			})
+			batchErr = j.svcCtx.UserRechargeRecordModel.BatchInsertExpirationDeductionRecords(j.ctx, params)
 			if batchErr == nil {
 				break
 			}
