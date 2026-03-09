@@ -104,7 +104,6 @@ func (j *ExpirationDeductionJob) processExpiration() error {
 		}
 		if err := j.svcCtx.UserRechargeRecordModel.BatchInsertExpirationDeductionRecords(j.ctx, params); err != nil {
 			j.Errorf("[ExpirationDeductionJob] 批量插入过期扣减记录失败: %v", err)
-			// 不再重试或降级逐条处理，当前批次留待后续任务重新扫描
 			continue
 		}
 
